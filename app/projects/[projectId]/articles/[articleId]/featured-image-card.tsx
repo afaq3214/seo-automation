@@ -78,7 +78,7 @@ export function FeaturedImageCard({
           <p className="text-sm text-slate-500">
             {busy
               ? "Creating the concept, generating the image and uploading it — usually under a minute."
-              : "One professional landscape image (WebP, 1536×1024) with descriptive alt text, stored on Cloudflare R2."}
+              : "One professional landscape image (WebP, 1536×1024) with descriptive alt text."}
           </p>
         )}
         {status === "failed" && error && !busy && <Notice tone="error">{error}</Notice>}

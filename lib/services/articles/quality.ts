@@ -16,7 +16,6 @@ import type {
   QualityRound,
 } from "@/lib/types";
 import { getProject } from "../projects";
-import { r2Missing } from "../images/r2";
 import { measureArticle } from "./checks";
 import { ArticleError, siteContext } from "./generate";
 import { countWords } from "./html";
@@ -135,7 +134,8 @@ function ruleGrades(content: ArticleContent, ctx: Ctx): { grades: Record<string,
 
   g.seo_internal_links = { status: m.internalLinks >= 3 ? "pass" : m.internalLinks >= 1 ? "warn" : "fail", reason: `${m.internalLinks} internal link(s) (aim 3+).` };
 
-  const imageConfigured = !!env().OPENAI_API_KEY && r2Missing().length === 0;
+  // Storage always works (R2 or the Supabase Storage fallback), so only the OpenAI key matters.
+  const imageConfigured = !!env().OPENAI_API_KEY;
   g.seo_image =
     article.featured_image_status === "ready" && article.featured_image_url
       ? (article.featured_image_alt?.length ?? 0) >= 20

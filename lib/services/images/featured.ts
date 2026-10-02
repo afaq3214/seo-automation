@@ -8,7 +8,7 @@ import { refreshArticleOutputs } from "../articles/render";
 import { getArticle } from "../articles/repository";
 import { getProject } from "../projects";
 import { generateImageWebp } from "./openaiImage";
-import { uploadToR2 } from "./r2";
+import { uploadImage } from "./storage";
 
 /** House style applied to every featured image unless a project overrides it later. */
 export const VISUAL_GUIDELINES = [
@@ -26,7 +26,7 @@ const conceptSchema = z.object({
 });
 
 /**
- * Module 08: concept (Claude) → image (OpenAI, WebP) → R2 → save URL/alt/status on the article.
+ * Module 08: concept (Claude) → image (OpenAI, WebP) → storage (R2, or Supabase Storage fallback) → save on the article.
  * Never throws for generation problems: the article keeps working and the status becomes "failed"
  * with the error, so the user can retry.
  */
@@ -49,7 +49,7 @@ export async function generateFeaturedImage(projectId: string, articleId: string
     const webp = await generateImageWebp(concept.imagePrompt);
     const filename = `${slugify(concept.filename || article.primary_keyword).slice(0, 60)}-${articleId.slice(0, 8)}.webp`;
     const key = `projects/${projectId}/articles/${filename}`;
-    const url = await uploadToR2(key, webp, "image/webp");
+    const url = await uploadImage(key, webp, "image/webp");
 
     await setImageFields(articleId, {
       featured_image_url: url,
