@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+/* Article preview (Module 05) — readable blog typography for generated HTML */
+.article-preview {
+  @apply max-w-3xl text-[15px] leading-7 text-slate-700;
+}
+.article-preview h1 { @apply mb-5 text-3xl font-bold leading-tight tracking-tight text-slate-900; }
+.article-preview h2 { @apply mb-3 mt-10 text-xl font-semibold tracking-tight text-slate-900; }
+.article-preview h3 { @apply mb-2 mt-6 text-base font-semibold text-slate-900; }
+.article-preview p { @apply my-3; }
+.article-preview a { @apply font-medium text-indigo-600 underline decoration-indigo-200 underline-offset-2 hover:decoration-indigo-600; }
+.article-preview ul { @apply my-3 list-disc space-y-1.5 pl-6; }
+.article-preview ol { @apply my-3 list-decimal space-y-1.5 pl-6; }
+.article-preview table { @apply my-5 w-full border-collapse text-sm; }
+.article-preview th { @apply border border-slate-200 bg-slate-50 px-3 py-2 text-left font-semibold text-slate-900; }
+.article-preview td { @apply border border-slate-200 px-3 py-2 align-top; }
+.article-preview .callout { @apply my-5 rounded-lg border-l-4 border-indigo-400 bg-indigo-50 px-4 py-1 text-slate-800; }
+.article-preview .faq { @apply mt-10 border-t border-slate-200 pt-2; }
+.article-preview .cta { @apply mt-10 rounded-xl bg-slate-900 px-6 py-5 text-slate-200; }
+.article-preview .cta h2 { @apply mt-0 text-white; }
+.article-preview .cta-button { @apply inline-block rounded-lg bg-indigo-500 px-4 py-2 font-semibold text-white no-underline hover:bg-indigo-400; }
