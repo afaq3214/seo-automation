@@ -41,7 +41,8 @@ export async function generateFeaturedImage(projectId: string, articleId: string
     const content = article.optimized_json ?? article.content_json;
     const concept = await createConcept({
       title: content.title,
-      summary: content.metaDescription || content.intro[0] || "",
+      summary: [content.metaDescription, ...content.intro.slice(0, 2)].filter(Boolean).join(" "),
+      headings: content.sections.filter((s) => s.level === 2).map((s) => s.heading),
       primaryKeyword: article.primary_keyword,
       analysis: project.analysis,
     });
@@ -71,14 +72,25 @@ export async function generateFeaturedImage(projectId: string, articleId: string
   return refreshArticleOutputs(projectId, articleId);
 }
 
-async function createConcept(input: { title: string; summary: string; primaryKeyword: string; analysis: BusinessAnalysis }) {
+async function createConcept(input: {
+  title: string;
+  summary: string;
+  headings: string[];
+  primaryKeyword: string;
+  analysis: BusinessAnalysis;
+}) {
   return claudeJson({
     label: "image concept",
     schema: conceptSchema,
     maxTokens: 1000,
     system: [
       "You art-direct one featured image for a blog article.",
-      "- concept: one sentence describing the scene and why it fits the article",
+      "The image must show what THIS article is about: its main subject, the situation it discusses or the",
+      "outcome it helps the reader reach. A reader should be able to guess the article's topic from the image.",
+      "The business and its customers are background context only: do not default to picturing a customer",
+      "doing their everyday job unless that is genuinely the article's subject. Vary the scene from article",
+      "to article rather than reusing one stock idea.",
+      "- concept: one sentence describing the scene and how it reflects the article's topic",
       "- imagePrompt: a detailed prompt for an image model (subject, setting, people, mood, composition,",
       "  lighting, style). It must follow the visual guidelines. Never ask for text, words, signs, logos,",
       "  brand names, screens with readable content or watermarks in the image.",
@@ -89,8 +101,9 @@ async function createConcept(input: { title: string; summary: string; primaryKey
     user: [
       `Article title: ${input.title}`,
       `Summary: ${input.summary}`,
+      `Main sections: ${input.headings.slice(0, 9).join(" | ")}`,
       `Primary keyword: ${input.primaryKeyword}`,
-      `Business: ${input.analysis.businessType} — customers: ${input.analysis.targetCustomer}`,
+      `Background context (not the subject): ${input.analysis.businessType} — customers: ${input.analysis.targetCustomer}`,
       `Visual guidelines: ${VISUAL_GUIDELINES}`,
     ].join("\n"),
   });
