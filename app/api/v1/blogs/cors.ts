@@ -6,8 +6,8 @@ export const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
-/** Edge/CDN cache 5 minutes, then serve stale for up to an hour while revalidating. */
-export const CACHE_OK = "public, max-age=60, s-maxage=300, stale-while-revalidate=3600";
+/** Edge/CDN cache 1 minute (newly published posts show up fast), then serve stale for up to 5 minutes while refreshing. */
+export const CACHE_OK = "public, max-age=30, s-maxage=60, stale-while-revalidate=300";
 /** Short cache for "not found" so newly published posts appear quickly. */
 export const CACHE_MISS = "public, max-age=0, s-maxage=60";
 
