@@ -1,14 +1,28 @@
 # Integrating SEO Automation blogs into callacy.com
 
-This guide shows how to display articles from the SEO Automation app on callacy.com at `https://callacy.com/blog` and `https://callacy.com/blog/<slug>`.
+This guide shows how to display articles from the SEO Automation app on every regional version of callacy.com. Each region has its own blog with its own articles, at `https://callacy.com/<region>/blog` and `https://callacy.com/<region>/blog/<slug>`.
 
 | | |
 |---|---|
 | **API base URL** | `https://seo-automation-sooty.vercel.app` |
-| **Site key** | `cfb50662ca04a026a6` (public, it only unlocks published articles) |
+| **Site keys** | One per region, see the table below (public, they only unlock published articles) |
 | **Auth** | None. The blog API is public and read-only |
 | **CORS** | `Access-Control-Allow-Origin: *`, so it can be called from the browser |
 | **Caching** | CDN cache 1 minute (`s-maxage=60`), stale for up to 5 minutes while refreshing. Newly published posts appear within about a minute |
+
+### Regions and site keys
+
+| Region | Site key | Blog list | Article URL |
+|---|---|---|---|
+| Main site (US) | `650d564aff1c91d05a` | `https://callacy.com/blog` | `https://callacy.com/blog/<slug>` |
+| Australia | `458d61eb825b92852e` | `https://callacy.com/au/blog` | `https://callacy.com/au/blog/<slug>` |
+| Canada | `fa68adc7d3571a183e` | `https://callacy.com/ca/blog` | `https://callacy.com/ca/blog/<slug>` |
+| New Zealand | `250602c9e2b866583f` | `https://callacy.com/nz/blog` | `https://callacy.com/nz/blog/<slug>` |
+| United Kingdom | `bcdc780cf706ec471e` | `https://callacy.com/uk/blog` | `https://callacy.com/uk/blog/<slug>` |
+
+Try one in the browser: `https://seo-automation-sooty.vercel.app/api/v1/blogs?site=458d61eb825b92852e`
+
+Every region is its own project in the SEO Automation app. Its articles are researched for that country (local keywords, competitors and Google results), and their internal links point to that region's pages (e.g. `/au/pricing`). A new article is published automatically **every day in each region**, so each list grows by one post per day.
 
 ---
 
@@ -16,7 +30,7 @@ This guide shows how to display articles from the SEO Automation app on callacy.
 
 Only **live** articles are ever returned: status `ready` or `published` **and** a publish date that has passed. Drafts, articles that need review and posts scheduled for the future return `404`, so the website never has to filter anything.
 
-Articles are published from the SEO Automation app: open an article → **Publishing** → **Publish now** or **Schedule**.
+Articles are published automatically by the app's daily automation, or by hand from the app (article → **Publishing** → **Publish now** or **Schedule**).
 
 ### List: `GET /api/v1/blogs?site=SITE_KEY&page=1&limit=20`
 
@@ -34,13 +48,13 @@ Articles are published from the SEO Automation app: open an article → **Publis
       "slug": "tradie-answering-service",
       "title": "Tradie Answering Services: How to Stop Missing Jobs When You're On the Tools",
       "excerpt": "Discover how a tradie answering service …",
-      "url": "https://callacy.com/blog/tradie-answering-service",
+      "url": "https://callacy.com/au/blog/tradie-answering-service",
       "publishedAt": "2026-10-02T09:00:00.000Z",
       "updatedAt": "2026-10-02T09:05:12.000Z",
       "meta": {
         "title": "Tradie Answering Service: Stop Missing Jobs On the Tools",
         "description": "Discover how a tradie answering service …",
-        "canonicalUrl": "https://callacy.com/blog/tradie-answering-service"
+        "canonicalUrl": "https://callacy.com/au/blog/tradie-answering-service"
       },
       "image": { "url": "https://…r2.dev/…/tradie-answering-service-on-site.webp", "alt": "Electrician on a ladder answering …" },
       "primaryKeyword": "tradie answering service"
@@ -70,7 +84,7 @@ Returns everything in the list item, plus:
   "article": {
     "slug": "tradie-answering-service",
     "title": "…", "excerpt": "…", "url": "…", "publishedAt": "…", "updatedAt": "…",
-    "meta": { "title": "…", "description": "…", "canonicalUrl": "https://callacy.com/blog/tradie-answering-service" },
+    "meta": { "title": "…", "description": "…", "canonicalUrl": "https://callacy.com/au/blog/tradie-answering-service" },
     "image": { "url": "…", "alt": "…" },
     "primaryKeyword": "tradie answering service",
     "wordCount": 1980,
@@ -94,18 +108,27 @@ Returns everything in the list item, plus:
 
 ## 2. Routes on callacy.com
 
-| Route | Shows |
-|---|---|
-| `/blog` | List of articles (from the list endpoint) |
-| `/blog/:slug` | One article (from the single-article endpoint) |
+| Route | Region | Site key |
+|---|---|---|
+| `/blog`, `/blog/:slug` | Main site (US) | `650d564aff1c91d05a` |
+| `/au/blog`, `/au/blog/:slug` | Australia | `458d61eb825b92852e` |
+| `/ca/blog`, `/ca/blog/:slug` | Canada | `fa68adc7d3571a183e` |
+| `/nz/blog`, `/nz/blog/:slug` | New Zealand | `250602c9e2b866583f` |
+| `/uk/blog`, `/uk/blog/:slug` | United Kingdom | `bcdc780cf706ec471e` |
 
-The route **must** be `/blog/:slug`, because every article's canonical URL is `https://callacy.com/blog/<slug>`. If the blog has to live somewhere else, ask for the project's `blog_base_url` to be changed in the SEO Automation app's database so canonical URLs match.
+The list page calls the list endpoint with that region's key, and the article page calls the single-article endpoint with the same key.
+
+The routes **must** match these paths, because each article's canonical URL is `https://callacy.com/<region>/blog/<slug>` (or `/blog/<slug>` for the main site); the API returns it in `article.url`. A slug only exists in its own region: asking the AU key for a UK slug returns `404`. If a region's blog has to live somewhere else, ask for that project's `blog_base_url` to be changed in the SEO Automation app's database so canonical URLs match.
+
+**A slug can contain one slash**, e.g. `best-24/7-answering-service-for-small-business`. Use a catch-all route (`/nz/blog/*` in React Router, reading `params["*"]`) instead of `/:slug`, and put the slug into the API URL as it is, without `encodeURIComponent`.
+
+**Regions are separate articles, not translations.** Two regions can have articles on similar topics, written separately for each country. Don't add `hreflang` links between them unless they are genuinely the same article; each page's own canonical is enough.
 
 ---
 
 ## 3. Rendering the article HTML
 
-`article.html` is generated by the SEO Automation app from structured content. All text is escaped, it only contains a fixed set of tags, and links only point to callacy.com. It is safe to render as-is:
+`article.html` is generated by the SEO Automation app from structured content. All text is escaped, it only contains a fixed set of tags, and links only point to callacy.com or to the cited data sources. It is safe to render as-is:
 
 ```tsx
 <div className="blog-content" dangerouslySetInnerHTML={{ __html: article.html }} />
@@ -113,7 +136,8 @@ The route **must** be `/blog/:slug`, because every article's canonical URL is `h
 
 **Important:**
 
-- The HTML **already contains the `<h1>` (title), the featured image and the FAQ section.** Don't render a second H1 or the image again above it, or the page will have two H1s.
+- The HTML **already contains the `<h1>` (title), both images and the FAQ section.** Don't render a second H1 or the featured image again above it, or the page will have two H1s.
+- Links are internal links to the same region's pages, plus (in some articles) links to the sources of statistics, which open in a new tab.
 - Defence in depth (optional): run it through `DOMPurify.sanitize(article.html)` before rendering.
 
 ### Tags and classes to style
@@ -163,8 +187,26 @@ Starter CSS, to adjust to Callacy's design:
 
 ```ts
 // src/lib/blogApi.ts
-const API_BASE = import.meta.env.VITE_BLOG_API_BASE; // e.g. https://seo-automation-sooty.vercel.app
-const SITE_KEY = import.meta.env.VITE_BLOG_SITE_KEY; // cfb50662ca04a026a6
+const API_BASE = import.meta.env.VITE_BLOG_API_BASE; // https://seo-automation-sooty.vercel.app
+
+/** Region path prefix ("" = main site) → site key. The keys are public. */
+export const BLOG_SITE_KEYS = {
+  "": "650d564aff1c91d05a", // callacy.com/blog (US)
+  au: "458d61eb825b92852e",
+  ca: "fa68adc7d3571a183e",
+  nz: "250602c9e2b866583f",
+  uk: "bcdc780cf706ec471e",
+} as const;
+export type BlogRegion = keyof typeof BLOG_SITE_KEYS;
+
+/** "/au/blog/x" → "au", "/blog/x" → "" */
+export function regionFromPath(pathname: string): BlogRegion {
+  const first = pathname.split("/").filter(Boolean)[0] ?? "";
+  return (first in BLOG_SITE_KEYS ? first : "") as BlogRegion;
+}
+
+/** Where a region's blog lives: "/blog" or "/au/blog". */
+export const blogPath = (region: BlogRegion) => (region ? `/${region}/blog` : "/blog");
 
 export interface BlogSummary {
   slug: string;
@@ -186,8 +228,8 @@ export interface BlogArticle extends BlogSummary {
   schema: Record<string, unknown>[];
 }
 
-export async function listBlogs(page = 1, limit = 12) {
-  const res = await fetch(`${API_BASE}/api/v1/blogs?site=${SITE_KEY}&page=${page}&limit=${limit}`);
+export async function listBlogs(region: BlogRegion, page = 1, limit = 12) {
+  const res = await fetch(`${API_BASE}/api/v1/blogs?site=${BLOG_SITE_KEYS[region]}&page=${page}&limit=${limit}`);
   if (!res.ok) throw new Error(`Blog list failed (${res.status})`);
   return (await res.json()) as {
     articles: BlogSummary[];
@@ -196,8 +238,8 @@ export async function listBlogs(page = 1, limit = 12) {
 }
 
 /** Returns null when the article doesn't exist or isn't published (404). */
-export async function getBlog(slug: string): Promise<BlogArticle | null> {
-  const res = await fetch(`${API_BASE}/api/v1/blogs/${encodeURIComponent(slug)}?site=${SITE_KEY}`);
+export async function getBlog(region: BlogRegion, slug: string): Promise<BlogArticle | null> {
+  const res = await fetch(`${API_BASE}/api/v1/blogs/${encodeURIComponent(slug)}?site=${BLOG_SITE_KEYS[region]}`);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Blog article failed (${res.status})`);
   return ((await res.json()) as { article: BlogArticle }).article;
@@ -208,26 +250,41 @@ Add to callacy's `.env`:
 
 ```
 VITE_BLOG_API_BASE=https://seo-automation-sooty.vercel.app
-VITE_BLOG_SITE_KEY=cfb50662ca04a026a6
 ```
 
-### Blog list page (`/blog`)
+### Routes (React Router)
+
+Register the two blog routes once per region, all with the same components:
+
+```tsx
+import { BLOG_SITE_KEYS, blogPath, type BlogRegion } from "@/lib/blogApi";
+
+const regions = Object.keys(BLOG_SITE_KEYS) as BlogRegion[];
+
+{regions.map((region) => [
+  <Route key={`${region}-list`} path={blogPath(region)} element={<BlogIndex />} />,
+  <Route key={`${region}-post`} path={`${blogPath(region)}/:slug`} element={<BlogPost />} />,
+])}
+```
+
+### Blog list page (`/blog`, `/au/blog`, …)
 
 ```tsx
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { listBlogs, type BlogSummary } from "@/lib/blogApi";
+import { Link, useLocation } from "react-router-dom";
+import { blogPath, listBlogs, regionFromPath, type BlogSummary } from "@/lib/blogApi";
 
 export function BlogIndex() {
+  const region = regionFromPath(useLocation().pathname);
   const [articles, setArticles] = useState<BlogSummary[]>([]);
-  useEffect(() => { listBlogs().then((r) => setArticles(r.articles)); }, []);
+  useEffect(() => { listBlogs(region).then((r) => setArticles(r.articles)); }, [region]);
 
   return (
     <main>
       <h1>Blog</h1>
       <div className="grid gap-6 md:grid-cols-3">
         {articles.map((a) => (
-          <Link key={a.slug} to={`/blog/${a.slug}`}>
+          <Link key={a.slug} to={`${blogPath(region)}/${a.slug}`}>
             {a.image && <img src={a.image.url} alt={a.image.alt} width={1536} height={1024} loading="lazy" />}
             <h2>{a.title}</h2>
             <p>{a.excerpt}</p>
@@ -240,20 +297,21 @@ export function BlogIndex() {
 }
 ```
 
-### Article page (`/blog/:slug`) with SEO tags
+### Article page (`/blog/:slug`, `/au/blog/:slug`, …) with SEO tags
 
 Callacy already sets per-page meta tags. Use the same mechanism (e.g. `react-helmet-async`):
 
 ```tsx
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import { getBlog, type BlogArticle } from "@/lib/blogApi";
+import { getBlog, regionFromPath, type BlogArticle } from "@/lib/blogApi";
 
 export function BlogPost() {
   const { slug = "" } = useParams();
+  const region = regionFromPath(useLocation().pathname);
   const [article, setArticle] = useState<BlogArticle | null | undefined>(undefined);
-  useEffect(() => { getBlog(slug).then(setArticle).catch(() => setArticle(null)); }, [slug]);
+  useEffect(() => { getBlog(region, slug).then(setArticle).catch(() => setArticle(null)); }, [region, slug]);
 
   if (article === undefined) return <p>Loading…</p>;
   if (article === null) {
@@ -293,11 +351,11 @@ export function BlogPost() {
 
 callacy.com is a client-side React app. With the code above, the article is fetched **in the browser**, so the HTML Google first downloads is still the empty shell. It has the homepage title and a canonical pointing to `https://callacy.com`. Google may render JavaScript later, but many crawlers (Bing, AI search tools, link previews) never do. **Client-side fetching alone will not rank well.**
 
-Pick one of these so the article is in the HTML the server sends. Check the result with **View Source (Ctrl+U)**, not Inspect: you should see the article text, its own `<title>`, and `<link rel="canonical" href="https://callacy.com/blog/<slug>">`.
+Pick one of these so the article is in the HTML the server sends. Check the result with **View Source (Ctrl+U)**, not Inspect: you should see the article text, its own `<title>`, and `<link rel="canonical" href="https://callacy.com/au/blog/<slug>">` (with that page's own region and slug).
 
 | Option | How | Trade-off |
 |---|---|---|
-| **A. Pre-render at build time** (recommended for this stack) | At build, call the list endpoint, then the article endpoint for each slug, and pre-render `/blog` and every `/blog/:slug` to static HTML. Use React Router v7's `prerender` option or a Vite SSG plugin (e.g. `vite-react-ssg`). | New posts need a rebuild. Add a **Vercel Deploy Hook** to the callacy project and trigger it after publishing, or rebuild on a schedule (e.g. daily). |
+| **A. Pre-render at build time** (recommended for this stack) | At build, call the list endpoint, then the article endpoint for each slug, and pre-render every region's blog list and every `<region>/blog/:slug` page to static HTML (loop over the site keys). Use React Router v7's `prerender` option or a Vite SSG plugin (e.g. `vite-react-ssg`). | New posts need a rebuild. Posts go out daily, so rebuild daily (e.g. a cron that calls a **Vercel Deploy Hook** on the callacy project). |
 | **B. Edge/server injection** | A Vercel Edge Middleware/Function on `/blog/*` that fetches the article from the API and writes `<title>`, meta, canonical, JSON-LD and the article HTML into `index.html` before sending it. | New posts appear instantly. More custom code. |
 | **C. Blog as a separate SSR app** | A small Next.js app serving `/blog/*` (rewrite from the main domain) that renders from this API on the server. | Cleanest SEO. A second app to run. |
 
@@ -337,11 +395,11 @@ Text fields can contain two inline formats: `**bold**` and `[link text](https://
 
 ## 7. Sitemap
 
-Add the blog URLs to callacy's `sitemap.xml`. At build time (option A), or from a small server function, call the list endpoint (all pages) and add one entry per article:
+Add the blog URLs to callacy's sitemaps. At build time (option A), or from a small server function, call the list endpoint (all pages) **for each region's site key** and add one entry per article to that region's sitemap (`callacy.com/au/sitemap.xml` for AU, and so on):
 
 ```xml
 <url>
-  <loc>https://callacy.com/blog/tradie-answering-service</loc>
+  <loc>https://callacy.com/au/blog/tradie-answering-service</loc>
   <lastmod>2026-10-02</lastmod>
 </url>
 ```
@@ -352,12 +410,13 @@ Use `article.url` for `<loc>` and `article.updatedAt` (date part) for `<lastmod>
 
 ## 8. Checklist
 
-- [ ] `VITE_BLOG_API_BASE` and `VITE_BLOG_SITE_KEY` set in callacy's environment
-- [ ] `/blog` and `/blog/:slug` routes added
+- [ ] `VITE_BLOG_API_BASE` set in callacy's environment, and the 5 site keys in `blogApi.ts`
+- [ ] Blog list and article routes for every region: `/blog`, `/au/blog`, `/ca/blog`, `/nz/blog`, `/uk/blog` (each with `/:slug`)
+- [ ] Blog CSS added, including `.article-image` for the mid-article image
 - [ ] Article HTML rendered once, with no second H1 or duplicate image
 - [ ] Per-article `<title>`, meta description, canonical, Open Graph and JSON-LD set
 - [ ] Unknown or unpublished slugs show "not found" with `noindex`
 - [ ] Article content and tags visible in **View Source** (section 5)
 - [ ] Hard-coded homepage canonical removed from `index.html`
-- [ ] Blog URLs added to `sitemap.xml`
+- [ ] Each region's blog URLs added to that region's sitemap
 - [ ] After deploying, inspect one URL in **Google Search Console → URL Inspection** and check that the "Google-selected canonical" is the article URL itself

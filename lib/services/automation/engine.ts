@@ -120,7 +120,16 @@ export async function runOneStep(): Promise<boolean> {
     }
     if (!next) continue;
     if (!(await claim(project))) continue; // another run got it first
-    await execute(project, next);
+
+    // Plan again from fresh data now that we hold the lock: another run may have just finished a step
+    // (e.g. published today's article), and acting on the earlier snapshot would repeat work.
+    const fresh = await getProject(project.id);
+    const confirmed = fresh?.auto_enabled ? await nextStep(fresh).catch(() => null) : null;
+    if (!fresh || !confirmed) {
+      await updateProject(project.id, { auto_locked_until: null });
+      continue;
+    }
+    await execute(fresh, confirmed);
     return true;
   }
   return false;

@@ -8,15 +8,16 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const siteSchema = z.string().trim().regex(/^[a-zA-Z0-9_-]{6,64}$/);
-const slugSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{0,120}$/);
+const slugSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*(\/[a-z0-9][a-z0-9-]*)?$/).max(120);
 
 /**
- * GET /api/v1/blogs/[slug]?site=SITE_KEY
+ * GET /api/v1/blogs/[...slug]?site=SITE_KEY
  * One live article: metadata, structured content (JSON), sanitized HTML, FAQ, schema (JSON-LD) and image.
  * Returns 404 for drafts, needs_review articles and posts scheduled in the future.
  */
-export async function GET(request: NextRequest, ctx: RouteContext<"/api/v1/blogs/[slug]">) {
-  const { slug } = await ctx.params;
+export async function GET(request: NextRequest, ctx: RouteContext<"/api/v1/blogs/[...slug]">) {
+  // Catch-all: a slug may contain a slash (e.g. "best-24/7-answering-service").
+  const slug = (await ctx.params).slug.join("/").replace(/%2f/gi, "/");
   const site = siteSchema.safeParse(request.nextUrl.searchParams.get("site") ?? "");
   if (!site.success) return json({ error: "A valid site key is required (?site=SITE_KEY)" }, 400, CACHE_MISS);
   if (!slugSchema.safeParse(slug).success) return json({ error: "Article not found" }, 404, CACHE_MISS);
