@@ -16,14 +16,21 @@ export function isAuthorizedTick(request: Request): boolean {
  */
 export async function kickAutomation(origin: string): Promise<void> {
   const secret = env().CRON_SECRET;
-  try {
-    const res = await fetch(`${origin}/api/automation/tick`, {
-      method: "POST",
-      headers: secret ? { authorization: `Bearer ${secret}` } : {},
-      cache: "no-store",
-    });
-    if (!res.ok) logger.warn("automation kick rejected", { status: res.status });
-  } catch (err) {
-    logger.warn("automation kick failed", { error: errorMessage(err) });
+  // A lost hand-off would stall the chain until the next cron, so try a few times.
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(`${origin}/api/automation/tick`, {
+        method: "POST",
+        headers: secret ? { authorization: `Bearer ${secret}` } : {},
+        cache: "no-store",
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (res.ok) return;
+      logger.warn("automation kick rejected", { status: res.status, attempt });
+      if (res.status === 401) return; // wrong/missing CRON_SECRET: retrying won't help
+    } catch (err) {
+      logger.warn("automation kick failed", { error: errorMessage(err), attempt });
+    }
+    await new Promise((r) => setTimeout(r, 2_000 * attempt));
   }
 }

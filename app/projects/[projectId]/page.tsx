@@ -6,7 +6,10 @@ import { competitorStats, listCompetitors } from "@/lib/services/competitors/rep
 import { keywordStats, listKeywords } from "@/lib/services/keywords/repository";
 import { getProject } from "@/lib/services/projects";
 import { listOpportunities } from "@/lib/services/strategy/repository";
+import { headers } from "next/headers";
+import { after } from "next/server";
 import { env } from "@/lib/env";
+import { kickAutomation } from "@/lib/services/automation/kick";
 import { listEvents, STEP_LABELS, type AutoStep } from "@/lib/services/automation/engine";
 import type { AutomationEvent, CompetitorRow, ContentOpportunity, KeywordRow, KeywordStats } from "@/lib/types";
 import { AutomationCard, type AutomationState } from "./automation-card";
@@ -43,6 +46,14 @@ export default async function ProjectOverviewPage(props: PageProps<"/projects/[p
   const base = `/projects/${projectId}`;
   const events = await safe<AutomationEvent[]>("automation", () => listEvents(projectId, 15), []);
   const locked = !!project.auto_locked_until && Date.parse(project.auto_locked_until) > Date.now();
+  // Watchdog: while someone looks at this page, restart a stalled chain (a tick with nothing due is a no-op,
+  // and the per-project lease prevents double work).
+  const waiting = !!project.auto_retry_at && Date.parse(project.auto_retry_at) > Date.now();
+  if (project.auto_enabled && !locked && !waiting) {
+    const h = await headers();
+    const origin = `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
+    after(() => kickAutomation(origin));
+  }
   const stepLabel = (s: string | null) => (s && s in STEP_LABELS ? STEP_LABELS[s as AutoStep] : s);
   const automation: AutomationState = {
     enabled: !!project.auto_enabled,

@@ -8,6 +8,9 @@ export const dynamic = "force-dynamic";
 // One automation step (e.g. writing an article or keyword research) runs after the response.
 export const maxDuration = 300;
 
+/** Start another step in the same invocation only within this time from the start. */
+const CONTINUE_WITHIN_MS = 45_000;
+
 /**
  * GET/POST /api/automation/tick: run ONE due automation step, then start the next tick if more work
  * is due, so the whole pipeline runs as a chain of short invocations. Called by Vercel Cron (GET, with
@@ -19,7 +22,13 @@ async function tick(request: Request) {
 
   after(async () => {
     try {
-      const worked = await runOneStep();
+      // Keep going in this invocation while it's early (crawl batches, images and publishing are short),
+      // leaving the rest of the 300s for a long step such as writing an article.
+      const started = Date.now();
+      let worked = false;
+      while (Date.now() - started < CONTINUE_WITHIN_MS && (await runOneStep())) worked = true;
+      // Best effort: platforms may block a function calling itself repeatedly, so a frequent cron
+      // (every 5-10 minutes) is what keeps the pipeline moving reliably.
       if (worked && (await hasDueWork())) await kickAutomation(origin);
     } catch (err) {
       logger.error("automation tick failed", { error: errorMessage(err) });
