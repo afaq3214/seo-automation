@@ -157,15 +157,25 @@ export function countWords(content: ArticleContent): number {
   return texts.join(" ").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").split(/\s+/).filter(Boolean).length;
 }
 
-export function slugify(input: string): string {
-  return (
-    input
-      .toLowerCase()
-      .normalize("NFKD")
-      .replace(/[^\p{L}\p{N}\s-]/gu, "")
-      .trim()
-      .replace(/[\s_-]+/g, "-")
-      .replace(/^-|-$/g, "")
-      .slice(0, 80) || "article"
-  );
+/**
+ * URL-safe slug. Symbols become words or hyphens rather than vanishing ("24/7" → "24-7", not "247";
+ * "&" → "and"), and long slugs are cut at a word boundary.
+ */
+export function slugify(input: string, maxLength = 75): string {
+  const slug = input
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "") // accents: café → cafe
+    .replace(/&/g, " and ")
+    .replace(/%/g, " percent ")
+    .replace(/\+/g, " plus ")
+    .replace(/[/\\|.,:;·–—]/g, " ") // separators become word breaks (24/7 → 24 7)
+    .replace(/['’"]/g, "") // don't → dont
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .trim()
+    .replace(/[\s_-]+/g, "-")
+    .replace(/^-|-$/g, "");
+  if (slug.length <= maxLength) return slug || "article";
+  const cut = slug.slice(0, maxLength + 1);
+  return cut.slice(0, cut.lastIndexOf("-") > 20 ? cut.lastIndexOf("-") : maxLength).replace(/-$/, "") || "article";
 }
