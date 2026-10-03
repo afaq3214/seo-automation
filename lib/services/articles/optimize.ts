@@ -16,7 +16,7 @@ import type {
 import { getProject } from "../projects";
 import { CHECKS, CHECK_IDS, measureArticle, pillarScores } from "./checks";
 import { ArticleError, siteContext } from "./generate";
-import { countWords, renderArticleHtml } from "./html";
+import { countWords, renderArticleHtml, wordLimits } from "./html";
 import { refreshArticleOutputs, sourceUrlsOf } from "./render";
 import { getArticle } from "./repository";
 import { HUMAN_VOICE, stripArticleDashes } from "./style";
@@ -54,7 +54,7 @@ export async function optimizeArticle(projectId: string, articleId: string, emit
     emit({ type: "step", step: "revising", message: `Revising ${before.edits.length} weak parts` });
     const { facts, links } = await siteContext(project, brief);
     const revisions = await revise(original, brief, before.edits, facts, [...links.map((l) => l.url), ...sourceUrlsOf(article)]);
-    const limited = enforceWordLimit(original, before.edits, revisions, env().ARTICLE_MAX_WORDS);
+    const limited = enforceWordLimit(original, before.edits, revisions, wordLimits().max, wordLimits().min);
     optimized = limited.content;
     applied = limited.applied;
   }
@@ -155,8 +155,9 @@ export async function audit(
     maxTokens: 5000,
     system: AUDIT_SYSTEM + (planEdits ? "" : "\n\nThis is a re-check after revisions: return edits as an empty list."),
     user: [
-      `WORD LIMIT: ${env().ARTICLE_MAX_WORDS} words. If the article is over it, plan edits that tighten the longest sections;`,
-      "never plan edits that would push it over the limit.",
+      `LENGTH: ${wordLimits().min}-${wordLimits().max} words (now ${countWords(content)}). If the article is over the maximum, plan edits`,
+      "that tighten the longest sections; if it is under the minimum, plan edits that deepen the thinnest sections.",
+      "Never plan edits that would push it outside the range.",
       `PRIMARY KEYWORD: ${article.primary_keyword}`,
       `SECONDARY KEYWORDS: ${article.secondary_keywords.join("; ") || "-"}`,
       `INTENT: ${brief.searchIntent} · READER: ${brief.targetReader}`,
@@ -242,8 +243,10 @@ export async function revise(
     system: REVISE_SYSTEM,
     user: [
       `PRIMARY KEYWORD: ${brief.primaryKeyword} · READER: ${brief.targetReader}`,
-      `WORD LIMIT: the whole article must stay under ${env().ARTICLE_MAX_WORDS} words: revisions should be the same length or`,
-      "shorter than what they replace; new sections at most ~120 words.",
+      `LENGTH: the whole article (now ${countWords(content)} words) must stay between ${wordLimits().min} and ${wordLimits().max} words.`,
+      countWords(content) < wordLimits().min
+        ? "It is below the minimum: revisions should ADD depth (examples, steps, specifics) to reach it, never filler."
+        : "Revisions should keep about the same length as what they replace; new sections at most ~120 words.",
       "",
       "EDITS TO MAKE:",
       ...edits.map((e, i) => `${i}. target=${e.target}${e.index != null ? ` index=${e.index}` : ""} fixes=${e.checkIds.join(",")} → ${e.instruction}`),
@@ -317,17 +320,20 @@ export function applyRevisions(original: ArticleContent, edits: ArticleEdit[], r
 }
 
 /**
- * Apply revisions, then keep the article within the word limit: while the result is over the limit and
- * longer than the original, drop the revision that added the most words (often an inserted section).
+ * Apply revisions, then keep the article within the word range: while the result is over the maximum and
+ * longer than the original, drop the revision that added the most words (often an inserted section); while
+ * it is under the minimum and shorter than the original, drop the revision that removed the most words.
  */
 export function enforceWordLimit(
   original: ArticleContent,
   edits: ArticleEdit[],
   revisions: Revision[],
   maxWords: number,
+  minWords = 0,
 ): { content: ArticleContent; applied: number } {
   const baseWords = countWords(original);
   const ceiling = Math.max(maxWords, baseWords);
+  const floor = Math.min(minWords, baseWords);
   const growth = new Map(revisions.map((r) => [r, countWords(applyRevisions(original, edits, [r])) - baseWords]));
   let kept = [...revisions];
   let result = applyRevisions(original, edits, kept);
@@ -338,8 +344,14 @@ export function enforceWordLimit(
     kept = kept.filter((r) => r !== largest);
     result = applyRevisions(original, edits, kept);
   }
+  while (countWords(result) < floor && kept.length) {
+    const smallest = kept.reduce((a, b) => ((growth.get(b) ?? 0) < (growth.get(a) ?? 0) ? b : a));
+    if ((growth.get(smallest) ?? 0) >= 0) break; // nothing left that removes words
+    kept = kept.filter((r) => r !== smallest);
+    result = applyRevisions(original, edits, kept);
+  }
   if (kept.length < revisions.length) {
-    logger.info("revisions dropped to respect word limit", { dropped: revisions.length - kept.length, words: countWords(result), maxWords });
+    logger.info("revisions dropped to respect word range", { dropped: revisions.length - kept.length, words: countWords(result), minWords, maxWords });
   }
   // Count only revisions that actually changed something.
   const applied = kept.filter((r) => JSON.stringify(applyRevisions(original, edits, [r])) !== JSON.stringify(original)).length;

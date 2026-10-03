@@ -1,11 +1,12 @@
 import { errorMessage, logger } from "@/lib/logger";
 import { supabaseAdmin } from "@/lib/supabase";
 import { siteBase } from "@/lib/url";
-import type { ArticleEvent, ContentBrief, ContentOpportunity, Project } from "@/lib/types";
+import type { ArticleContent, ArticleEdit, ArticleEvent, ContentBrief, ContentOpportunity, Project } from "@/lib/types";
 import { coverage, tokenSet } from "../keywords/text";
 import { getProject } from "../projects";
 import { createBrief } from "./brief";
-import { countWords, renderArticleHtml, slugify } from "./html";
+import { countWords, renderArticleHtml, slugify, wordLimits } from "./html";
+import { enforceWordLimit, revise } from "./optimize";
 import { refreshArticleOutputs } from "./render";
 import { saveDraft } from "./repository";
 import { crawlCompetitorOutlines, fetchDataSources, fetchSerpResearch } from "./research";
@@ -60,7 +61,7 @@ export async function generateArticle(
 
   emit({ type: "step", step: "writing", message: "Writing article" });
   const { facts, links } = await siteContext(project, brief);
-  const content = await writeArticle({
+  let content = await writeArticle({
     brief,
     analysis: project.analysis,
     domain: project.domain,
@@ -68,6 +69,19 @@ export async function generateArticle(
     siteLinks: links,
     dataSources,
   });
+
+  // Too short: deepen the thinnest sections once (never with filler; the reviser keeps the same rules).
+  const { min: minWords, max: maxWords } = wordLimits();
+  const written = countWords(content);
+  if (written < minWords) {
+    emit({ type: "step", step: "writing", message: `Expanding the draft to at least ${minWords} words (${written} so far)` });
+    const edits = expansionEdits(content, minWords - written);
+    if (edits.length) {
+      const revisions = await revise(content, brief, edits, facts, [...links.map((l) => l.url), ...dataSources.map((s) => s.url)]);
+      content = enforceWordLimit(content, edits, revisions, maxWords).content;
+    }
+    logger.info("article expanded", { before: written, after: countWords(content), minWords });
+  }
 
   emit({ type: "step", step: "saving", message: "Saving draft" });
   const siteHost = new URL(project.url).hostname;
@@ -93,6 +107,26 @@ export async function generateArticle(
   logger.info("article draft saved", { projectId, articleId: saved.id, words: saved.word_count });
   emit({ type: "step", step: "complete", message: "Complete" });
   emit({ type: "complete", article: saved });
+}
+
+/** Edits that deepen the thinnest H2 sections, sharing the missing words between them (with headroom). */
+function expansionEdits(content: ArticleContent, missing: number): ArticleEdit[] {
+  const sectionWords = (s: ArticleContent["sections"][number]) =>
+    countWords({ ...content, title: "", intro: [], sections: [s], faq: [], cta: { heading: "", text: "", buttonLabel: "", buttonUrl: "" } });
+  const thinnest = content.sections
+    .map((s, index) => ({ s, index, words: sectionWords(s) }))
+    .filter((x) => x.s.level === 2)
+    .sort((a, b) => a.words - b.words)
+    .slice(0, 4);
+  const each = Math.max(80, Math.round((missing * 1.2) / Math.max(1, thinnest.length)));
+  return thinnest.map(({ index, words }) => ({
+    target: "section" as const,
+    index,
+    checkIds: ["seo_length"],
+    instruction:
+      `Deepen this section from ~${words} to ~${words + each} words. Keep its heading, existing content and links; add what a ` +
+      "reader actually needs here: a concrete example or real situation, practical steps, specifics or a short checklist. No filler or repetition.",
+  }));
 }
 
 async function loadOpportunity(projectId: string, opportunityId: string): Promise<ContentOpportunity> {

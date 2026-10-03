@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { claudeJson } from "@/lib/anthropic";
-import { env } from "@/lib/env";
 import type { BusinessAnalysis, ContentBrief, ContentOpportunity, SerpResearch } from "@/lib/types";
+import { wordLimits } from "./html";
 
 const briefSchema = z.object({
   searchIntent: z.enum(["informational", "commercial", "transactional", "navigational"]),
@@ -30,7 +30,7 @@ const SYSTEM = [
   "- differentiatingAngles: what the top results miss or do poorly that this business can add",
   "  (first-hand expertise, local specifics, pricing transparency, decision frameworks, examples)",
   "- outline: H1 plus 5-9 H2 sections with H3s where useful; notes say what each section must deliver",
-  "- recommendedWordCount: roughly the competitive length, but never above the maximum given",
+  "- recommendedWordCount: roughly the competitive length, but always within the length range given",
   "- ctaIdea: a relevant next step for this reader with this business",
   "Keep the primary keyword as given. Pick secondary keywords only from the provided list.",
   "Do not reuse competitor headings verbatim: describe topics in your own words.",
@@ -46,7 +46,7 @@ export async function createBrief(input: {
   domain: string;
 }): Promise<ContentBrief> {
   const { opportunity: o, analysis: a, research: r } = input;
-  const maxWords = env().ARTICLE_MAX_WORDS;
+  const { min: minWords, max: maxWords } = wordLimits();
   const brief = await claudeJson({
     label: "content brief",
     schema: briefSchema,
@@ -54,7 +54,8 @@ export async function createBrief(input: {
     system: SYSTEM,
     user: [
       `PRIMARY KEYWORD: ${o.primary_keyword}`,
-      `Maximum article length: ${maxWords} words (plan the outline to fit: fewer, tighter sections beat padding).`,
+      `Article length: ${minWords}-${maxWords} words. Plan enough sections and depth to reach at least ${minWords} words`,
+      "with genuinely useful content (examples, steps, checklists), and not so many that it would pass the maximum.",
       `Secondary keyword candidates: ${o.secondary_keywords.join("; ") || "-"}`,
       `Planned content type: ${o.content_type} · intent: ${o.search_intent}`,
       `Why this page: ${o.reason}`,
@@ -90,7 +91,10 @@ export async function createBrief(input: {
     ...brief,
     primaryKeyword: o.primary_keyword,
     secondaryKeywords: brief.secondaryKeywords.filter((k) => allowed.has(k.toLowerCase())).slice(0, 10),
-    // Aim at ~85% of the hard limit: writers tend to overshoot their target slightly.
-    recommendedWordCount: Math.max(Math.min(800, maxWords), Math.min(Math.round(maxWords * 0.85), brief.recommendedWordCount)),
+    // Aim inside the range, a little above the minimum and ~85% of the maximum: writers drift both ways.
+    recommendedWordCount: Math.max(
+      Math.min(minWords + 150, maxWords),
+      Math.min(Math.max(Math.round(maxWords * 0.85), minWords + 150), brief.recommendedWordCount),
+    ),
   };
 }

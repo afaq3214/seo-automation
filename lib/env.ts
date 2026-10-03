@@ -47,6 +47,8 @@ const envSchema = z.object({
   ARTICLE_RESEARCH_PAGES: z.coerce.number().int().min(0).max(8).default(5),
   /** Hard maximum article length (words, including FAQ) for generation and optimization */
   ARTICLE_MAX_WORDS: z.coerce.number().int().min(500).max(5000).default(2000),
+  /** Minimum article length (words, including FAQ): short drafts are expanded, revisions may not go below it */
+  ARTICLE_MIN_WORDS: z.coerce.number().int().min(300).max(5000).default(1500),
 
   // Module 08 — featured images (OpenAI Image API → Cloudflare R2)
   OPENAI_API_KEY: optional,

@@ -1,3 +1,4 @@
+import { env } from "@/lib/env";
 import type { ArticleBlock, ArticleContent, FeaturedImage } from "@/lib/types";
 
 /** The mid-article image and the heading of the section it illustrates. */
@@ -137,6 +138,12 @@ function escapeHtml(s: string): string {
 
 function escapeAttr(s: string): string {
   return escapeHtml(s).replace(/"/g, "&quot;");
+}
+
+/** Article length bounds in words (the minimum always sits at least 200 below the maximum). */
+export function wordLimits(): { min: number; max: number } {
+  const { ARTICLE_MIN_WORDS, ARTICLE_MAX_WORDS } = env();
+  return { min: Math.min(ARTICLE_MIN_WORDS, ARTICLE_MAX_WORDS - 200), max: ARTICLE_MAX_WORDS };
 }
 
 /** Words across all visible text of the article. */

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { claudeJson } from "@/lib/anthropic";
 import { env } from "@/lib/env";
 import type { ArticleBlock, ArticleContent, BusinessAnalysis, ContentBrief, DataSource } from "@/lib/types";
+import { wordLimits } from "./html";
 import { HUMAN_VOICE, stripArticleDashes } from "./style";
 
 // One flat block shape keeps the JSON schema simple; it's narrowed into ArticleBlock afterwards.
@@ -118,8 +119,9 @@ export async function writeArticle(input: {
         ? input.dataSources.flatMap((s) => [`Source: ${s.title} (${s.url})`, ...s.facts.map((f) => `  - ${f}`)])
         : ["(none found: do not use statistics)"]),
       "",
-      `Target length: about ${b.recommendedWordCount} words. HARD LIMIT: no more than ${env().ARTICLE_MAX_WORDS} words in total,`,
-      "counting intro, sections, FAQ and CTA. Cover the outline concisely rather than exceeding the limit.",
+      `Target length: about ${b.recommendedWordCount} words. MINIMUM ${wordLimits().min} words, HARD LIMIT ${wordLimits().max} words`,
+      "in total, counting intro, sections, FAQ and CTA. Reach the minimum with depth (examples, steps, specifics,",
+      "real situations), never with filler or repetition.",
     ].join("\n"),
   });
   return normalizeArticle(raw);

@@ -18,7 +18,7 @@ import type {
 import { getProject } from "../projects";
 import { measureArticle } from "./checks";
 import { ArticleError, siteContext } from "./generate";
-import { countWords } from "./html";
+import { countWords, wordLimits } from "./html";
 import { measureContent, type ContentMeasures } from "./measures";
 import { DISCLAIMER, enforceWordLimit, revise } from "./optimize";
 import { refreshArticleOutputs, sourceUrlsOf } from "./render";
@@ -157,7 +157,11 @@ function ruleGrades(content: ArticleContent, ctx: Ctx): { grades: Record<string,
     reason: `BlogPosting${content.faq.length >= 2 ? " + FAQPage" : ""} schema${hasImage ? " with image" : " (no image yet)"}.`,
   };
 
-  g.seo_length = { status: m.words > maxWords * 1.05 ? "warn" : m.words < 600 ? "fail" : "pass", reason: `${m.words} words (limit ${maxWords}).` };
+  const minWords = wordLimits().min;
+  g.seo_length = {
+    status: m.words > maxWords * 1.05 ? "warn" : m.words < minWords * 0.9 ? "fail" : m.words < minWords ? "warn" : "pass",
+    reason: `${m.words} words (range ${minWords}-${maxWords}).${m.words < minWords ? ` ${minWords - m.words} short of the minimum: deepen the thinnest sections.` : ""}`,
+  };
 
   const fre = x.readability.fleschReadingEase;
   g.seo_readability =
@@ -369,7 +373,8 @@ async function planEdits(content: ArticleContent, ctx: Ctx, failing: CriterionRe
       "· faq · cta · meta (meta title/description), the checkIds it fixes, and a precise instruction that uses the",
       "measured gaps (e.g. which topics/questions/terms are missing, which paragraph is too long).",
       "Never rewrite the whole article, never plan duplicate headings, never ask for prices, statistics, quotes or",
-      `claims about named competitors. Keep the article within ${env().ARTICLE_MAX_WORDS} words (prefer replacing over adding).`,
+      `claims about named competitors. Keep the article between ${wordLimits().min} and ${wordLimits().max} words (it is now`,
+      `${countWords(content)}): above the middle of that range prefer replacing over adding; below the minimum, add depth.`,
     ].join("\n"),
     user: [
       `PRIMARY KEYWORD: ${ctx.article.primary_keyword}`,
@@ -421,7 +426,7 @@ export async function runQualityLoop(projectId: string, articleId: string, emit:
     if (!edits.length) break;
     const { facts, links } = await siteContext(project, article.brief);
     const revisions = await revise(content, article.brief, edits, facts, [...links.map((l) => l.url), ...sourceUrlsOf(article)]);
-    const limited = enforceWordLimit(content, edits, revisions, e.ARTICLE_MAX_WORDS);
+    const limited = enforceWordLimit(content, edits, revisions, e.ARTICLE_MAX_WORDS, wordLimits().min);
     if (limited.applied === 0) break;
 
     emit({ type: "step", step: "scoring", message: `Re-scoring after round ${round}` });
