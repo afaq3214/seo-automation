@@ -21,7 +21,7 @@ import { ArticleError, siteContext } from "./generate";
 import { countWords } from "./html";
 import { measureContent, type ContentMeasures } from "./measures";
 import { DISCLAIMER, enforceWordLimit, revise } from "./optimize";
-import { refreshArticleOutputs } from "./render";
+import { refreshArticleOutputs, sourceUrlsOf } from "./render";
 import { getArticle } from "./repository";
 
 /**
@@ -84,6 +84,7 @@ interface Ctx {
 
 // ---- Rule criteria ---------------------------------------------------------------------
 
+const TARGET_INTERNAL_LINKS = 8;
 const ratio = (n: number, d: number) => (d ? n / d : 1);
 const band = (r: number, pass: number, warn: number): CheckStatus => (r >= pass ? "pass" : r >= warn ? "warn" : "fail");
 const listMissing = (items: string[], n = 3) => (items.length ? ` Missing: ${items.slice(0, n).join("; ")}${items.length > n ? "…" : ""}.` : "");
@@ -91,7 +92,7 @@ const listMissing = (items: string[], n = 3) => (items.length ? ` Missing: ${ite
 function ruleGrades(content: ArticleContent, ctx: Ctx): { grades: Record<string, Grade>; measures: ContentMeasures } {
   const { article, project } = ctx;
   const maxWords = env().ARTICLE_MAX_WORDS;
-  const m = measureArticle(content, article.primary_keyword, article.secondary_keywords);
+  const m = measureArticle(content, article.primary_keyword, article.secondary_keywords, new URL(project.url).hostname);
   const x = measureContent(content, {
     brief: article.brief,
     research: article.serp_research,
@@ -132,7 +133,10 @@ function ruleGrades(content: ArticleContent, ctx: Ctx): { grades: Record<string,
     reason: metaIssues.length ? `${metaIssues.join("; ")}.` : "Meta title, description and slug within limits.",
   };
 
-  g.seo_internal_links = { status: m.internalLinks >= 3 ? "pass" : m.internalLinks >= 1 ? "warn" : "fail", reason: `${m.internalLinks} internal link(s) (aim 3+).` };
+  g.seo_internal_links = {
+    status: m.internalLinks >= TARGET_INTERNAL_LINKS ? "pass" : m.internalLinks >= 4 ? "warn" : "fail",
+    reason: `${m.internalLinks} internal link(s) to different pages (aim ${TARGET_INTERNAL_LINKS}-10).`,
+  };
 
   // Storage always works (R2 or the Supabase Storage fallback), so only the OpenAI key matters.
   const imageConfigured = !!env().OPENAI_API_KEY;
@@ -246,15 +250,15 @@ const JUDGE_SYSTEM = [
   "You are an independent editor grading a web article. Grade ONLY these criteria, each pass / warn / fail,",
   "with one short reason quoting or pointing to concrete evidence.",
   "",
-  "seo_intent — Search intent match. PASS: the article gives exactly what someone searching the keyword wants,",
+  "seo_intent: Search intent match. PASS: the article gives exactly what someone searching the keyword wants,",
   "  in the format they expect, early. WARN: relevant but takes too long or partly answers a different need.",
   "  FAIL: mostly about something else or the wrong format (e.g. a sales page for a how-to search).",
-  "seo_quality — Content quality. PASS: specific, accurate, practical, no filler or repetition; a domain expert",
+  "seo_quality: Content quality. PASS: specific, accurate, practical, no filler or repetition; a domain expert",
   "  would publish it. WARN: useful but generic in places, some padding or repetition. FAIL: thin, vague or salesy.",
-  "geo_answerability — Could an AI assistant quote a single sentence from this article to answer the main",
+  "geo_answerability: Could an AI assistant quote a single sentence from this article to answer the main",
   "  questions? PASS: clear standalone answer sentences throughout. WARN: answers exist but are buried in",
   "  context. FAIL: answers must be pieced together.",
-  "geo_factual — Factual clarity. PASS: claims are precise and verifiable or clearly framed as general guidance;",
+  "geo_factual: Factual clarity. PASS: claims are precise and verifiable or clearly framed as general guidance;",
   "  no unsupported numbers. WARN: some vague or hedged claims. FAIL: unsupported statistics or confident",
   "  claims that can't be verified.",
   "",
@@ -360,7 +364,7 @@ async function planEdits(content: ArticleContent, ctx: Ctx, failing: CriterionRe
     schema: planSchema,
     maxTokens: 3000,
     system: [
-      `Plan at most ${MAX_EDITS_PER_ROUND} targeted edits that fix the failed criteria below — nothing else.`,
+      `Plan at most ${MAX_EDITS_PER_ROUND} targeted edits that fix the failed criteria below: nothing else.`,
       "Each edit names the smallest part to change: intro · section (index) · insert_after (index, -1 = after the intro)",
       "· faq · cta · meta (meta title/description), the checkIds it fixes, and a precise instruction that uses the",
       "measured gaps (e.g. which topics/questions/terms are missing, which paragraph is too long).",
@@ -416,7 +420,7 @@ export async function runQualityLoop(projectId: string, articleId: string, emit:
     const edits = await planEdits(content, ctx, fixable, current.measures);
     if (!edits.length) break;
     const { facts, links } = await siteContext(project, article.brief);
-    const revisions = await revise(content, article.brief, edits, facts, links.map((l) => l.url));
+    const revisions = await revise(content, article.brief, edits, facts, [...links.map((l) => l.url), ...sourceUrlsOf(article)]);
     const limited = enforceWordLimit(content, edits, revisions, e.ARTICLE_MAX_WORDS);
     if (limited.applied === 0) break;
 

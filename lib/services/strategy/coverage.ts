@@ -1,5 +1,6 @@
 import { logger } from "@/lib/logger";
 import { supabaseAdmin } from "@/lib/supabase";
+import { siteBase } from "@/lib/url";
 import { fetchSitemapUrls } from "../crawler/sitemap";
 import { coverage, tokenSet } from "../keywords/text";
 
@@ -45,8 +46,7 @@ export async function loadSitePages(projectId: string, siteUrl: string): Promise
 
   const crawled = new Set(pages.map((p) => p.url.replace(/\/$/, "")));
   try {
-    const origin = new URL(siteUrl).origin;
-    const { urls } = await fetchSitemapUrls(origin, []);
+    const { urls } = await fetchSitemapUrls(siteBase(siteUrl), []);
     for (const url of urls) {
       if (crawled.has(url.replace(/\/$/, ""))) continue;
       pages.push({ url, headingTokens: new Set(), slugTokens: slugTokens(url), wordCount: null });

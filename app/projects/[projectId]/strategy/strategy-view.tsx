@@ -75,6 +75,7 @@ type ArticleComplete = Extract<ArticleEvent, { type: "complete" }>;
 const ARTICLE_STEPS: { key: ArticleStep; label: string }[] = [
   { key: "serp", label: "Google research" },
   { key: "pages", label: "Top pages" },
+  { key: "data", label: "Real data" },
   { key: "brief", label: "Brief" },
   { key: "writing", label: "Writing" },
   { key: "saving", label: "Saving" },

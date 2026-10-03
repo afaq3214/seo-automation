@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { appPassword, isValidSession, SESSION_COOKIE } from "@/lib/auth";
 
 /**
- * Password gate for the whole app. Not applied to (see matcher): the public blog API (/api/v1),
+ * Password gate for the whole app. Not applied to (see matcher): the public blog API (/api/v1), the
+ * automation tick (/api/automation, protected by CRON_SECRET),
  * the login page and login/logout endpoints, and static assets.
  */
 export function proxy(request: NextRequest) {
@@ -22,5 +23,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api/v1/|api/auth/|login|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!api/v1/|api/auth/|api/automation/|login|_next/static|_next/image|favicon.ico).*)"],
 };

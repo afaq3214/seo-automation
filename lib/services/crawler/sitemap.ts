@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { logger } from "@/lib/logger";
+import { isInSite } from "@/lib/url";
 import { fetchText } from "./http";
 
 const MAX_SITEMAP_FILES = 10;
@@ -12,12 +13,24 @@ export interface SitemapResult {
 }
 
 /**
- * Collect page URLs from sitemaps listed in robots.txt, falling back to /sitemap.xml.
+ * Collect page URLs from sitemaps listed in robots.txt, falling back to /sitemap.xml. `base` is the
+ * site's base URL (see siteBase): an origin, or an origin plus a region folder like /au.
  * Follows sitemap indexes (breadth-first, capped). Gzipped sitemaps are skipped.
  */
-export async function fetchSitemapUrls(origin: string, robotsSitemaps: string[]): Promise<SitemapResult> {
-  // robots.txt sitemaps first, then the conventional locations (robots entries are often stale).
-  const queue = [...robotsSitemaps, `${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`];
+export async function fetchSitemapUrls(base: string, robotsSitemaps: string[]): Promise<SitemapResult> {
+  const origin = new URL(base).origin;
+  if (base.replace(/\/+$/, "") === origin) return collect(origin, [...robotsSitemaps, `${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`]);
+
+  // Region site (e.g. https://callacy.com/au): its own sitemap first; the main sitemaps only as a fallback.
+  // Either way, only URLs inside the region folder are kept.
+  const inside = (r: SitemapResult) => ({ ...r, urls: r.urls.filter((u) => isInSite(u, base)) });
+  const own = inside(await collect(base, [`${base}/sitemap.xml`, `${base}/sitemap_index.xml`]));
+  if (own.urls.length) return own;
+  return inside(await collect(origin, [...robotsSitemaps, `${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`]));
+}
+
+/** robots.txt sitemaps first, then the conventional locations (robots entries are often stale). */
+async function collect(origin: string, queue: string[]): Promise<SitemapResult> {
   const visited = new Set<string>();
   const urls = new Set<string>();
   let sitemapUrl: string | null = null;

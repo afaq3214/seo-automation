@@ -2,7 +2,7 @@ import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { supabaseAdmin } from "@/lib/supabase";
 import type { Project } from "@/lib/types";
-import { isSameSite, normalizePageUrl } from "@/lib/url";
+import { isInSite, normalizePageUrl, siteBase } from "@/lib/url";
 import { mapWithConcurrency } from "../keywords/text";
 import { crawlPage } from "./crawl";
 import { closeBrowser } from "./render";
@@ -30,7 +30,8 @@ export interface PageCounts {
 export async function queueSitemapPages(project: Project): Promise<{ queued: number; sitemapUrls: number }> {
   const origin = new URL(project.url).origin;
   const robots = await fetchRobots(origin);
-  const { urls } = await fetchSitemapUrls(origin, robots.sitemaps);
+  const base = siteBase(project.url);
+  const { urls } = await fetchSitemapUrls(base, robots.sitemaps);
 
   const existing = await existingPageKeys(project.id);
   const room = Math.max(0, env().CRAWL_MAX_SITE_PAGES - existing.size);
@@ -38,7 +39,7 @@ export async function queueSitemapPages(project: Project): Promise<{ queued: num
   for (const raw of urls) {
     if (toQueue.length >= room) break;
     const url = normalizePageUrl(raw);
-    if (!url || !isSameSite(url, project.url)) continue;
+    if (!url || !isInSite(url, base)) continue;
     if (FILE_EXT.test(new URL(url).pathname) || !isAllowedByRobots(url, robots)) continue;
     const key = dedupeKey(url);
     if (existing.has(key)) continue;

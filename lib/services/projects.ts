@@ -27,6 +27,16 @@ type ProjectPatch = Partial<
     | "strategy_error"
     | "strategy_started_at"
     | "strategy_generated_at"
+    | "auto_enabled"
+    | "auto_step"
+    | "auto_attempts"
+    | "auto_error"
+    | "auto_locked_until"
+    | "auto_retry_at"
+    | "auto_article_id"
+    | "auto_next_post_at"
+    | "auto_pages_queued_at"
+    | "auto_last_run_at"
   >
 >;
 

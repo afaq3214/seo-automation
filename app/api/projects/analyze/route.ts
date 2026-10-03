@@ -1,8 +1,11 @@
+import { after } from "next/server";
 import { z } from "zod";
 import { env } from "@/lib/env";
 import { errorMessage, logger } from "@/lib/logger";
 import { ndjsonResponse } from "@/lib/ndjson";
 import { analyzeProject } from "@/lib/services/analyzeProject";
+import { setAutomation } from "@/lib/services/automation/engine";
+import { kickAutomation } from "@/lib/services/automation/kick";
 import type { AnalyzeEvent } from "@/lib/types";
 import { normalizeInputUrl } from "@/lib/url";
 
@@ -23,6 +26,8 @@ const bodySchema = z.object({
     .trim()
     .toLowerCase()
     .regex(/^[a-z]{2}$/, "Language must be a 2-letter ISO code, e.g. en"),
+  /** Run everything automatically afterwards and publish one article per day */
+  automate: z.boolean().default(false),
 });
 
 /**
@@ -62,7 +67,13 @@ export async function POST(request: Request) {
 
   return ndjsonResponse<AnalyzeEvent>(async (emit) => {
     try {
-      const result = await analyzeProject({ ...parsed.data, url }, emit);
+      const { automate, ...input } = parsed.data;
+      const result = await analyzeProject({ ...input, url }, emit);
+      if (automate && result.project.analysis) {
+        await setAutomation(result.project.id, "enable");
+        const origin = new URL(request.url).origin;
+        after(() => kickAutomation(origin));
+      }
       emit({ type: "complete", ...result });
     } catch (err) {
       const projectId = (err as { projectId?: string }).projectId;

@@ -6,7 +6,10 @@ import { competitorStats, listCompetitors } from "@/lib/services/competitors/rep
 import { keywordStats, listKeywords } from "@/lib/services/keywords/repository";
 import { getProject } from "@/lib/services/projects";
 import { listOpportunities } from "@/lib/services/strategy/repository";
-import type { CompetitorRow, ContentOpportunity, KeywordRow, KeywordStats } from "@/lib/types";
+import { env } from "@/lib/env";
+import { listEvents, STEP_LABELS, type AutoStep } from "@/lib/services/automation/engine";
+import type { AutomationEvent, CompetitorRow, ContentOpportunity, KeywordRow, KeywordStats } from "@/lib/types";
+import { AutomationCard, type AutomationState } from "./automation-card";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +41,20 @@ export default async function ProjectOverviewPage(props: PageProps<"/projects/[p
   ]);
   const cStats = competitorStats(competitors);
   const base = `/projects/${projectId}`;
+  const events = await safe<AutomationEvent[]>("automation", () => listEvents(projectId, 15), []);
+  const locked = !!project.auto_locked_until && Date.parse(project.auto_locked_until) > Date.now();
+  const stepLabel = (s: string | null) => (s && s in STEP_LABELS ? STEP_LABELS[s as AutoStep] : s);
+  const automation: AutomationState = {
+    enabled: !!project.auto_enabled,
+    running: locked ? stepLabel(project.auto_step) : null,
+    lastStep: stepLabel(project.auto_step ?? null),
+    error: project.auto_error ?? null,
+    retryAt: project.auto_retry_at ?? null,
+    nextPostAt: project.auto_next_post_at ?? null,
+    strategyAt: project.strategy_generated_at,
+    refreshDays: env().AUTO_STRATEGY_REFRESH_DAYS,
+    articleInProgress: !!project.auto_article_id,
+  };
 
   if (!a) {
     return (
@@ -50,6 +67,7 @@ export default async function ProjectOverviewPage(props: PageProps<"/projects/[p
 
   return (
     <div className="space-y-6">
+      <AutomationCard projectId={projectId} state={automation} events={events} />
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Pages crawled" value={project.pages_crawled} hint={`Analyzed ${formatDate(project.analyzed_at)}`} />
         <StatCard label="Keywords" value={kw?.stats.totalKeywords ?? 0} hint={`${kw?.stats.totalClusters ?? 0} clusters`} />

@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { claudeJson } from "@/lib/anthropic";
 import { env } from "@/lib/env";
-import type { ArticleBlock, ArticleContent, BusinessAnalysis, ContentBrief } from "@/lib/types";
+import type { ArticleBlock, ArticleContent, BusinessAnalysis, ContentBrief, DataSource } from "@/lib/types";
+import { HUMAN_VOICE, stripArticleDashes } from "./style";
 
 // One flat block shape keeps the JSON schema simple; it's narrowed into ArticleBlock afterwards.
 export const blockSchema = z.object({
@@ -40,18 +41,31 @@ const SYSTEM = [
   "- Write in your own words. Never copy or closely paraphrase competitor wording.",
   "- Facts: only state facts about the business that appear in the provided business facts. Do not invent",
   "  features, statistics, customer names, testimonials or awards. When unsure, don't state it.",
-  "- Never state specific prices, plan names or discounts — not for this business and not for anyone else.",
+  "- Real-world data: back up key points with 3-6 statistics taken ONLY from the REAL-WORLD DATA list. Copy each",
+  "  number exactly, keep its meaning and context (who was surveyed, where, which year if given), and cite it",
+  "  inline with a link to its source URL, e.g. 'A [Forbes survey](https://...) found 62% of callers ...'. Each",
+  "  statistic and its link appear once. Never invent, round, combine or extrapolate numbers, and never state a",
+  "  statistic that is not in the list. If nothing in the list fits, use no statistics.",
+  "  Prefer independent figures (government statistics, surveys, research and analytics firms). Skip a company's",
+  "  claims about itself, its own customers or its case studies, and anything that reads like marketing.",
+  "- Never state specific prices, plan names or discounts: not for this business and not for anyone else.",
   "  Explain pricing models in general terms and link to the business's pricing page instead.",
   "- Other companies: never attribute specific features, prices, limitations, availability or ratings to a",
   "  named third-party company, and never build a table comparing named companies. Compare categories",
   "  (e.g. AI vs human services) or give an evaluation checklist instead. Naming a few providers neutrally",
   "  as examples is fine.",
-  "- Do not add an FAQ section to 'sections' — FAQs go only in the 'faq' field.",
-  "- Mention the business naturally where it genuinely helps the reader — not in every section.",
+  "- Do not add an FAQ section to 'sections': FAQs go only in the 'faq' field.",
+  "- Mention the business naturally where it genuinely helps the reader: not in every section.",
   "- Use the primary keyword in the title, the intro and at least one H2; use secondary keywords naturally.",
   "",
-  "Formatting inside text: **bold** for emphasis, and [anchor text](url) links — ONLY to URLs from the",
-  "provided site pages list (2-5 internal links where relevant). No other markup, no HTML, no headings in text.",
+  "Internal links: include 10 internal links (at least 8) to DIFFERENT pages from the site pages list, spread",
+  "through the intro, sections and FAQ. Each anchor is a natural, descriptive phrase that tells the reader what",
+  "the linked page is about (never 'click here' or 'learn more'), and each URL is linked only once.",
+  "",
+  "Formatting inside text: **bold** for emphasis, and [anchor text](url) links ONLY to URLs from the site pages",
+  "list or the REAL-WORLD DATA sources. No other markup, no HTML, no headings in text.",
+  "",
+  HUMAN_VOICE,
   "",
   "Output fields:",
   "- title: the H1 · metaTitle: max 60 characters · metaDescription: max 155 characters, compelling",
@@ -69,6 +83,7 @@ export async function writeArticle(input: {
   domain: string;
   businessFacts: string;
   siteLinks: SiteLink[];
+  dataSources: DataSource[];
 }): Promise<ArticleContent> {
   const { brief: b, analysis: a } = input;
   const raw = await claudeJson({
@@ -81,16 +96,21 @@ export async function writeArticle(input: {
       "CONTENT BRIEF",
       JSON.stringify(b, null, 2),
       "",
-      `BUSINESS: ${input.domain} — ${a.businessType}`,
+      `BUSINESS: ${input.domain}: ${a.businessType}`,
       `Summary: ${a.businessSummary}`,
       `Offerings: ${a.mainOfferings.join("; ")}`,
       `Customers: ${a.targetCustomer}`,
       "",
-      "BUSINESS FACTS (from the business's own website — the only facts you may state about it):",
+      "BUSINESS FACTS (from the business's own website: the only facts you may state about it):",
       input.businessFacts,
       "",
-      "SITE PAGES YOU MAY LINK TO:",
+      "SITE PAGES YOU MAY LINK TO (use 8-10 different ones):",
       ...input.siteLinks.map((l) => `- ${l.title}: ${l.url}`),
+      "",
+      "REAL-WORLD DATA (sentences quoted from these pages; the only statistics you may use, cite the source URL):",
+      ...(input.dataSources.length
+        ? input.dataSources.flatMap((s) => [`Source: ${s.title} (${s.url})`, ...s.facts.map((f) => `  - ${f}`)])
+        : ["(none found: do not use statistics)"]),
       "",
       `Target length: about ${b.recommendedWordCount} words. HARD LIMIT: no more than ${env().ARTICLE_MAX_WORDS} words in total,`,
       "counting intro, sections, FAQ and CTA. Cover the outline concisely rather than exceeding the limit.",
@@ -119,7 +139,7 @@ export function normalizeArticle(raw: z.infer<typeof articleSchema>): ArticleCon
     .filter((s) => s.heading && !/^(faqs?|frequently asked questions?)/i.test(s.heading))
     .filter((s, i, all) => s.blocks.length > 0 || (s.level === 2 && all[i + 1]?.level === 3));
 
-  return {
+  return stripArticleDashes({
     title: raw.title.trim(),
     metaTitle: raw.metaTitle.trim().slice(0, 70),
     metaDescription: raw.metaDescription.trim().slice(0, 170),
@@ -128,5 +148,5 @@ export function normalizeArticle(raw: z.infer<typeof articleSchema>): ArticleCon
     sections,
     faq: raw.faq.filter((f) => f.question.trim() && f.answer.trim()),
     cta: raw.cta,
-  };
+  });
 }

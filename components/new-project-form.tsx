@@ -49,13 +49,14 @@ export function NewProjectForm() {
   const [url, setUrl] = useState("");
   const [country, setCountry] = useState("AU");
   const [language, setLanguage] = useState("en");
+  const [automate, setAutomate] = useState(true);
   const [result, setResult] = useState<{ project: Project; pages: PageSummary[] } | null>(null);
   const job = useStreamJob<AnalyzeStep, CompleteEvent>();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setResult(null);
-    await job.run("/api/projects/analyze", { url, country, language }, (event) => {
+    await job.run("/api/projects/analyze", { url, country, language, automate }, (event) => {
       setResult({ project: event.project, pages: event.pages });
       router.refresh(); // show the new project in the sidebar
     });
@@ -123,6 +124,21 @@ export function NewProjectForm() {
                 </select>
               </div>
             </div>
+            <label className="flex items-start gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={automate}
+                onChange={(e) => setAutomate(e.target.checked)}
+                disabled={job.running}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium">Run everything automatically</span>
+                <span className="block text-xs text-slate-500">
+                  Keywords, competitors and strategy, then one blog written and published every day. Strategy refreshes every 3 days.
+                </span>
+              </span>
+            </label>
             <Button type="submit" disabled={job.running} className="w-full">
               {job.running ? "Analyzing…" : "Create project & analyze"}
             </Button>

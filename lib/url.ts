@@ -52,6 +52,28 @@ export function bareHost(url: string): string {
   return new URL(url).hostname.replace(/^www\./, "");
 }
 
+/** A region/locale folder such as /au, /nz, /en-au or /en_GB. */
+const REGION_FOLDER = /^[a-z]{2}([-_][a-z]{2})?$/i;
+
+/**
+ * The site's base URL: the origin, plus the region folder when the project URL is one
+ * (https://callacy.com/au/ → https://callacy.com/au). No trailing slash.
+ */
+export function siteBase(url: string): string {
+  const u = new URL(url);
+  const segments = u.pathname.split("/").filter(Boolean);
+  return segments.length === 1 && REGION_FOLDER.test(segments[0]) ? `${u.origin}/${segments[0].toLowerCase()}` : u.origin;
+}
+
+/** True when `url` belongs to the site at `base` (same host, and inside its region folder if it has one). */
+export function isInSite(url: string, base: string): boolean {
+  if (!isSameSite(url, base)) return false;
+  const prefix = new URL(base).pathname.replace(/\/+$/, "").toLowerCase();
+  if (!prefix) return true;
+  const path = new URL(url).pathname.toLowerCase();
+  return path === prefix || path.startsWith(`${prefix}/`);
+}
+
 /** True when both URLs belong to the same site (www and non-www treated as equal). */
 export function isSameSite(a: string, b: string): boolean {
   try {

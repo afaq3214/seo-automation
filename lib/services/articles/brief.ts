@@ -33,10 +33,10 @@ const SYSTEM = [
   "- recommendedWordCount: roughly the competitive length, but never above the maximum given",
   "- ctaIdea: a relevant next step for this reader with this business",
   "Keep the primary keyword as given. Pick secondary keywords only from the provided list.",
-  "Do not reuse competitor headings verbatim — describe topics in your own words.",
-  "Do not plan tables or sections comparing named competitors' features or prices — plan category",
+  "Do not reuse competitor headings verbatim: describe topics in your own words.",
+  "Do not plan tables or sections comparing named competitors' features or prices: plan category",
   "comparisons (e.g. AI vs human) or evaluation checklists instead. Do not include specific prices.",
-  "Do not put an FAQ section in the outline — FAQs are generated separately from commonQuestions.",
+  "Do not put an FAQ section in the outline: FAQs are generated separately from commonQuestions.",
 ].join("\n");
 
 export async function createBrief(input: {
@@ -54,7 +54,7 @@ export async function createBrief(input: {
     system: SYSTEM,
     user: [
       `PRIMARY KEYWORD: ${o.primary_keyword}`,
-      `Maximum article length: ${maxWords} words (plan the outline to fit — fewer, tighter sections beat padding).`,
+      `Maximum article length: ${maxWords} words (plan the outline to fit: fewer, tighter sections beat padding).`,
       `Secondary keyword candidates: ${o.secondary_keywords.join("; ") || "-"}`,
       `Planned content type: ${o.content_type} · intent: ${o.search_intent}`,
       `Why this page: ${o.reason}`,

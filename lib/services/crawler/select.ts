@@ -1,4 +1,4 @@
-import { isSameSite, normalizePageUrl } from "@/lib/url";
+import { isInSite, normalizePageUrl } from "@/lib/url";
 import { isAllowedByRobots, type RobotsInfo } from "./robots";
 
 export const FILE_EXT = /\.(pdf|jpe?g|png|gif|webp|avif|svg|ico|zip|rar|docx?|xlsx?|pptx?|csv|mp4|mov|mp3|wav|xml|json|txt|css|js)$/i;
@@ -15,12 +15,14 @@ const ARTICLE = /\/(blog|news|posts?|articles?|insights|resources)\/.+|\/\d{4}\/
  */
 export function selectImportantUrls(options: {
   homepage: string;
+  /** Site base URL (origin, or origin + region folder): pages outside it are skipped */
+  base: string;
   sitemapUrls: string[];
   homepageLinks: string[];
   robots: RobotsInfo;
   max: number;
 }): string[] {
-  const { homepage, sitemapUrls, homepageLinks, robots, max } = options;
+  const { homepage, base, sitemapUrls, homepageLinks, robots, max } = options;
   const linkedFromHome = new Set(homepageLinks);
   const homeKey = dedupeKey(homepage);
 
@@ -28,7 +30,7 @@ export function selectImportantUrls(options: {
   const seen = new Set<string>([homeKey]);
   for (const raw of [...homepageLinks, ...sitemapUrls]) {
     const url = normalizePageUrl(raw);
-    if (!url || !isSameSite(url, homepage)) continue;
+    if (!url || !isInSite(url, base)) continue;
     const key = dedupeKey(url);
     if (seen.has(key)) continue;
     seen.add(key);

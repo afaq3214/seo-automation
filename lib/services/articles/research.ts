@@ -1,12 +1,12 @@
 import { env } from "@/lib/env";
 import { errorMessage, logger } from "@/lib/logger";
-import type { Project, SerpResearch } from "@/lib/types";
+import type { DataSource, Project, SerpResearch } from "@/lib/types";
 import { isIgnoredDomain, rootDomain } from "../competitors/domains";
 import { crawlPage } from "../crawler/crawl";
 import { closeBrowser } from "../crawler/render";
 import { FILE_EXT } from "../crawler/select";
 import { getSerp } from "../keywords/serper";
-import { mapWithConcurrency } from "../keywords/text";
+import { coverage, mapWithConcurrency, tokenSet } from "../keywords/text";
 
 /** Only look at this many results when picking pages to crawl. */
 const CANDIDATE_RESULTS = 8;
@@ -64,4 +64,63 @@ export async function crawlCompetitorOutlines(
   } finally {
     await closeBrowser();
   }
+}
+
+/** Sites whose numbers aren't citable (forums, social, video, Q&A). */
+const UNCITABLE = /(^|\.)(reddit|quora|youtube|facebook|instagram|tiktok|linkedin|x|twitter|pinterest|medium)\.com$/;
+const MAX_DATA_SOURCES = 5;
+const MAX_FACTS_PER_SOURCE = 6;
+
+/**
+ * Real-world data for the article: Google "<keyword> statistics" results, then sentences containing numbers
+ * from those pages (plus the result snippets). The writer may only use numbers from this list, each cited
+ * with a link to its source. 1 Serper credit unless cached; failures just mean no data.
+ */
+export async function fetchDataSources(project: Project, keyword: string): Promise<DataSource[]> {
+  const own = rootDomain(project.domain);
+  try {
+    const serp = await getSerp(`${keyword} statistics`, project.country, project.language);
+    const candidates = serp.organic.filter((r) => {
+      try {
+        const u = new URL(r.link);
+        return rootDomain(u.hostname) !== own && !UNCITABLE.test(u.hostname.replace(/^www\./, "")) && !FILE_EXT.test(u.pathname);
+      } catch {
+        return false;
+      }
+    });
+
+    const topic = tokenSet(keyword);
+    const sources = await mapWithConcurrency(candidates.slice(0, MAX_DATA_SOURCES + 2), 3, async (r) => {
+      let body = "";
+      try {
+        const { page } = await crawlPage(r.link);
+        body = page?.bodyText ?? "";
+      } catch (err) {
+        logger.warn("data source crawl failed", { url: r.link, error: errorMessage(err) });
+      }
+      const facts = dataSentences(`${r.snippet ?? ""} ${body}`, topic).slice(0, MAX_FACTS_PER_SOURCE);
+      return facts.length ? { url: r.link, title: r.title, facts } : null;
+    });
+    return sources.filter((s): s is DataSource => s !== null).slice(0, MAX_DATA_SOURCES);
+  } catch (err) {
+    logger.warn("data research failed", { keyword, error: errorMessage(err) });
+    return [];
+  } finally {
+    await closeBrowser();
+  }
+}
+
+/** Sentences with a statistic (percentage, "x in y", large number or multiplier), most on-topic first. */
+function dataSentences(text: string, topic: Set<string>): string[] {
+  const STAT = /\d+(\.\d+)?\s?%|\b\d+\s+(in|out of)\s+\d+\b|\b\d{1,3}(,\d{3})+\b|\b\d+(\.\d+)?\s?(million|billion|x|times)\b/i;
+  const seen = new Set<string>();
+  return text
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+(?=[A-Z0-9"“])/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 40 && s.length <= 300 && STAT.test(s) && !/[$€£]\s?\d/.test(s))
+    .filter((s) => (seen.has(s) ? false : (seen.add(s), true)))
+    .map((s) => ({ s, score: coverage(topic, tokenSet(s)) }))
+    .sort((a, b) => b.score - a.score)
+    .map((x) => x.s);
 }

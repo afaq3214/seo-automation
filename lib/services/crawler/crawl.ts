@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { siteBase } from "@/lib/url";
 import { extractPage, type ExtractedPage } from "./extract";
 import { fetchText, isHtml } from "./http";
 import { closeBrowser, renderWithPlaywright } from "./render";
@@ -31,11 +32,14 @@ export async function crawlSite(startUrl: string, maxPages: number): Promise<Cra
     }
 
     const origin = new URL(home.page.url).origin;
+    // A region site (callacy.com/au) only covers its own folder.
+    const base = siteBase(startUrl);
     const robots = await fetchRobots(origin);
-    const sitemap = await fetchSitemapUrls(origin, robots.sitemaps);
+    const sitemap = await fetchSitemapUrls(base, robots.sitemaps);
 
     const targets = selectImportantUrls({
       homepage: home.page.url,
+      base,
       sitemapUrls: sitemap.urls,
       homepageLinks: home.page.internalLinks,
       robots,

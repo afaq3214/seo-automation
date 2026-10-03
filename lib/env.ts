@@ -69,6 +69,10 @@ const envSchema = z.object({
   /** Judge runs for the final grade; the median of the votes is used (1 = single run) */
   QUALITY_JUDGE_VOTES: z.coerce.number().int().min(1).max(5).default(3),
 
+  // Full automation: secret for the cron/tick endpoint, and how often the strategy is rebuilt
+  CRON_SECRET: optional,
+  AUTO_STRATEGY_REFRESH_DAYS: z.coerce.number().min(1).max(30).default(3),
+
   // Module 04 — content gap & strategy
   STRATEGY_MAX_TOPICS: z.coerce.number().int().min(5).max(60).default(25),
   STRATEGY_MAX_OPPORTUNITIES: z.coerce.number().int().min(3).max(40).default(20),

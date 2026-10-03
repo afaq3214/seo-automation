@@ -42,8 +42,28 @@ export interface Project {
   site_key: string;
   /** Where the blog lives, e.g. https://callacy.com/blog — defaults to <site>/blog */
   blog_base_url: string | null;
+  /** Full automation (migration 012) */
+  auto_enabled: boolean;
+  auto_step: string | null;
+  auto_attempts: number;
+  auto_error: string | null;
+  auto_locked_until: string | null;
+  auto_retry_at: string | null;
+  auto_article_id: string | null;
+  auto_next_post_at: string | null;
+  auto_pages_queued_at: string | null;
+  auto_last_run_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface AutomationEvent {
+  id: string;
+  project_id: string;
+  step: string;
+  level: "info" | "error";
+  message: string;
+  created_at: string;
 }
 
 export interface PageSummary {
@@ -250,6 +270,14 @@ export interface SerpResearch {
   relatedSearches: string[];
   /** Outlines of top-ranking pages we could crawl (headings only) */
   competitorPages: { url: string; title: string | null; h1: string | null; h2s: string[]; h3s: string[]; wordCount: number }[];
+  /** Real-world statistics the article may cite (sentences quoted from these pages) */
+  dataSources?: DataSource[];
+}
+
+export interface DataSource {
+  url: string;
+  title: string;
+  facts: string[];
 }
 
 export type ArticleBlock =
@@ -271,6 +299,8 @@ export interface ArticleContent {
 
 export type ArticleStatus = "draft" | "ready" | "needs_review" | "approved" | "published";
 export type ImageStatus = "none" | "generating" | "ready" | "failed";
+/** featured = top of the article · inline = in the middle, next to the section it illustrates */
+export type ImageSlot = "featured" | "inline";
 
 export interface ArticleRow {
   id: string;
@@ -300,6 +330,14 @@ export interface ArticleRow {
   featured_image_prompt: string | null;
   featured_image_key: string | null;
   featured_image_generated_at: string | null;
+  inline_image_url: string | null;
+  inline_image_alt: string | null;
+  inline_image_status: ImageStatus;
+  inline_image_error: string | null;
+  inline_image_prompt: string | null;
+  inline_image_key: string | null;
+  inline_image_heading: string | null;
+  inline_image_generated_at: string | null;
   schema_json: Record<string, unknown>[] | null;
   seo_score: number | null;
   geo_score: number | null;
@@ -315,7 +353,7 @@ export interface ArticleRow {
   updated_at: string;
 }
 
-export type ArticleStep = "serp" | "pages" | "brief" | "writing" | "saving" | "complete";
+export type ArticleStep = "serp" | "pages" | "data" | "brief" | "writing" | "saving" | "complete";
 
 /** Newline-delimited JSON events streamed by POST /api/projects/[projectId]/articles/generate */
 export type ArticleEvent =

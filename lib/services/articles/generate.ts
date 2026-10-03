@@ -1,5 +1,6 @@
 import { errorMessage, logger } from "@/lib/logger";
 import { supabaseAdmin } from "@/lib/supabase";
+import { siteBase } from "@/lib/url";
 import type { ArticleEvent, ContentBrief, ContentOpportunity, Project } from "@/lib/types";
 import { coverage, tokenSet } from "../keywords/text";
 import { getProject } from "../projects";
@@ -7,10 +8,10 @@ import { createBrief } from "./brief";
 import { countWords, renderArticleHtml, slugify } from "./html";
 import { refreshArticleOutputs } from "./render";
 import { saveDraft } from "./repository";
-import { crawlCompetitorOutlines, fetchSerpResearch } from "./research";
+import { crawlCompetitorOutlines, fetchDataSources, fetchSerpResearch } from "./research";
 import { writeArticle, type SiteLink } from "./writer";
 
-const MAX_SITE_LINKS = 15;
+const MAX_SITE_LINKS = 30;
 const FACTS_CHARS = { homepage: 1500, pricing: 1000, related: 700 };
 
 export class ArticleError extends Error {
@@ -41,12 +42,17 @@ export async function generateArticle(
 
   emit({ type: "step", step: "pages", message: "Reading top-ranking pages" });
   const competitorPages = await crawlCompetitorOutlines(project, serp.organic);
-  const research = { ...serp, competitorPages };
+
+  emit({ type: "step", step: "data", message: "Finding real-world data and statistics" });
+  const dataSources = await fetchDataSources(project, opportunity.primary_keyword);
+  const research = { ...serp, competitorPages, dataSources };
   logger.info("article research", {
     keyword: opportunity.primary_keyword,
     results: serp.organic.length,
     questions: serp.peopleAlsoAsk.length,
     pagesRead: competitorPages.length,
+    dataSources: dataSources.length,
+    dataPoints: dataSources.reduce((n, s) => n + s.facts.length, 0),
   });
 
   emit({ type: "step", step: "brief", message: "Creating content brief" });
@@ -60,6 +66,7 @@ export async function generateArticle(
     domain: project.domain,
     businessFacts: facts,
     siteLinks: links,
+    dataSources,
   });
 
   emit({ type: "step", step: "saving", message: "Saving draft" });
@@ -76,7 +83,7 @@ export async function generateArticle(
     brief,
     serp_research: research,
     content_json: content,
-    content_html: renderArticleHtml(content, siteHost),
+    content_html: renderArticleHtml(content, siteHost, null, dataSources.map((s) => s.url)),
     word_count: countWords(content),
   });
 
@@ -123,7 +130,8 @@ export async function siteContext(project: Project, brief: ContentBrief): Promis
     .sort((a, b) => b.score - a.score);
 
   const path = (p: { url: string }) => new URL(p.url).pathname.replace(/\/$/, "");
-  const homepage = pages.find((p) => path(p) === "");
+  const homePath = new URL(siteBase(project.url)).pathname.replace(/\/$/, ""); // "" or a region folder like "/au"
+  const homepage = pages.find((p) => path(p) === homePath);
   // Prefer the target country's version (e.g. /nz/pricing) — pricing pages often vary by region.
   const cc = project.country.toLowerCase();
   const pricingPages = pages.filter((p) => /pricing|price|plans/.test(path(p)));
@@ -138,7 +146,11 @@ export async function siteContext(project: Project, brief: ContentBrief): Promis
     .filter(Boolean)
     .join("\n\n");
 
-  const links = [homepage, pricing, ...scored.filter((p) => p.score > 0)]
+  // Most related pages first, then the site's main (shortest-path) pages so there's enough to link to.
+  const linkable = (p: { url: string }) => !/privacy|terms|cookie|legal|login|sign-?in|sign-?up|account|cart|checkout|\/tag\/|\/author\//i.test(path(p));
+  const mainPages = scored.filter((p) => p.score === 0).sort((a, b) => path(a).length - path(b).length);
+  const links = [homepage, pricing, ...scored.filter((p) => p.score > 0), ...mainPages]
+    .filter((p) => !p || linkable(p))
     .filter((p): p is (typeof pages)[number] => !!p)
     .filter((p, i, all) => all.findIndex((x) => x.url === p.url) === i)
     .slice(0, MAX_SITE_LINKS)

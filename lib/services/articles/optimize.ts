@@ -17,8 +17,9 @@ import { getProject } from "../projects";
 import { CHECKS, CHECK_IDS, measureArticle, pillarScores } from "./checks";
 import { ArticleError, siteContext } from "./generate";
 import { countWords, renderArticleHtml } from "./html";
-import { refreshArticleOutputs } from "./render";
+import { refreshArticleOutputs, sourceUrlsOf } from "./render";
 import { getArticle } from "./repository";
+import { HUMAN_VOICE, stripArticleDashes } from "./style";
 import { blockSchema, normalizeArticle } from "./writer";
 
 const MAX_EDITS = 8;
@@ -42,7 +43,7 @@ export async function optimizeArticle(projectId: string, articleId: string, emit
   const { brief } = article;
 
   emit({ type: "step", step: "measuring", message: "Measuring the draft" });
-  const metricsBefore = measureArticle(original, article.primary_keyword, article.secondary_keywords);
+  const metricsBefore = measureArticle(original, article.primary_keyword, article.secondary_keywords, new URL(project.url).hostname);
 
   emit({ type: "step", step: "auditing", message: "Auditing SEO, GEO & AEO" });
   const before = await audit(original, brief, metricsBefore, article, true);
@@ -52,14 +53,14 @@ export async function optimizeArticle(projectId: string, articleId: string, emit
   if (before.edits.length) {
     emit({ type: "step", step: "revising", message: `Revising ${before.edits.length} weak parts` });
     const { facts, links } = await siteContext(project, brief);
-    const revisions = await revise(original, brief, before.edits, facts, links.map((l) => l.url));
+    const revisions = await revise(original, brief, before.edits, facts, [...links.map((l) => l.url), ...sourceUrlsOf(article)]);
     const limited = enforceWordLimit(original, before.edits, revisions, env().ARTICLE_MAX_WORDS);
     optimized = limited.content;
     applied = limited.applied;
   }
 
   emit({ type: "step", step: "rechecking", message: "Re-checking the result" });
-  const metricsAfter = measureArticle(optimized, article.primary_keyword, article.secondary_keywords);
+  const metricsAfter = measureArticle(optimized, article.primary_keyword, article.secondary_keywords, new URL(project.url).hostname);
   // Unchanged article → keep the original grades (a second audit would only add grading noise).
   const after = applied > 0 ? await audit(optimized, brief, metricsAfter, article, false) : before;
 
@@ -87,7 +88,7 @@ export async function optimizeArticle(projectId: string, articleId: string, emit
     .from("articles")
     .update({
       optimized_json: optimized,
-      optimized_html: renderArticleHtml(optimized, siteHost),
+      optimized_html: renderArticleHtml(optimized, siteHost, null, sourceUrlsOf(article)),
       optimized_word_count: countWords(optimized),
       optimization_report: report,
       optimized_at: new Date().toISOString(),
@@ -126,7 +127,7 @@ const AUDIT_SYSTEM = [
   "Checks:",
   ...CHECKS.map((c) => `- ${c.id} (${c.pillar}): ${c.label}`),
   "",
-  "Then plan targeted edits ONLY for checks graded warn or fail — at most " + MAX_EDITS + " edits, smallest change that fixes",
+  "Then plan targeted edits ONLY for checks graded warn or fail: at most " + MAX_EDITS + " edits, smallest change that fixes",
   "the problem. Never plan edits for parts that are already good. Edit targets:",
   "- intro (index null): rewrite the introduction (e.g. answer-first summary, definition, keyword in first sentence)",
   "- section (index = section index): rewrite that section's heading and/or blocks (e.g. question-style heading with",
@@ -136,7 +137,7 @@ const AUDIT_SYSTEM = [
   "- faq (index null): rewrite the FAQ list (concise, self-contained answers)",
   "- cta (index null): rewrite the call to action",
   "Each edit lists the checkIds it fixes and a precise instruction.",
-  "Never plan edits that add prices, price ranges, statistics, studies, quotes or claims about named competitors —",
+  "Never plan edits that add prices, price ranges, statistics, studies, quotes or claims about named competitors : ",
   "for geo_facts, ask for concise, specific statements using facts already in the article; never ask for new numbers.",
   "Never plan a heading that duplicates another heading in the article.",
 ].join("\n");
@@ -216,11 +217,15 @@ const REVISE_SYSTEM = [
   "",
   "Optimization style: answer first (the first sentence answers the heading's question); concise definitions",
   "('X is …'); short, quotable, self-contained factual sentences; question-style headings where natural;",
-  "use the primary keyword naturally — replace repeated exact matches with natural variants; no stuffing.",
+  "use the primary keyword naturally: replace repeated exact matches with natural variants; no stuffing.",
   "",
   "Hard rules: only state facts about the business that are in the provided business facts; no specific prices;",
-  "no claims about named competitors; no invented statistics, studies or quotes. Inline formatting: **bold** and",
-  "[anchor](url) links only to the allowed URLs. No HTML. Never write that the article is optimized for AI answers.",
+  "no claims about named competitors; no invented statistics, studies or quotes. Keep every statistic that is",
+  "already in the part you revise exactly as written, together with its source link. Keep the internal links of",
+  "the part you revise (rewording the anchor is fine). Inline formatting: **bold** and [anchor](url) links only to",
+  "the allowed URLs. No HTML. Never write that the article is optimized for AI answers.",
+  "",
+  HUMAN_VOICE,
 ].join("\n");
 
 export async function revise(
@@ -237,7 +242,7 @@ export async function revise(
     system: REVISE_SYSTEM,
     user: [
       `PRIMARY KEYWORD: ${brief.primaryKeyword} · READER: ${brief.targetReader}`,
-      `WORD LIMIT: the whole article must stay under ${env().ARTICLE_MAX_WORDS} words — revisions should be the same length or`,
+      `WORD LIMIT: the whole article must stay under ${env().ARTICLE_MAX_WORDS} words: revisions should be the same length or`,
       "shorter than what they replace; new sections at most ~120 words.",
       "",
       "EDITS TO MAKE:",
@@ -308,7 +313,7 @@ export function applyRevisions(original: ArticleContent, edits: ArticleEdit[], r
   for (const { index, section } of inserts.sort((a, b) => b.index - a.index)) {
     result.sections.splice(index + 1, 0, section);
   }
-  return result;
+  return stripArticleDashes(result);
 }
 
 /**

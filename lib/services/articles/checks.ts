@@ -31,7 +31,7 @@ const MAX_DIRECT_ANSWER_WORDS = 60;
 const words = (s: string) => s.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\*\*/g, "").split(/\s+/).filter(Boolean);
 
 /** Rule-based measurements — fast, deterministic, no AI. */
-export function measureArticle(c: ArticleContent, primary: string, secondary: string[]): ArticleMetrics {
+export function measureArticle(c: ArticleContent, primary: string, secondary: string[], siteHost?: string): ArticleMetrics {
   const paragraphs = [
     ...c.intro,
     ...c.sections.flatMap((s) => s.blocks.filter((b) => b.type === "paragraph").map((b) => (b as { text: string }).text)),
@@ -73,7 +73,20 @@ export function measureArticle(c: ArticleContent, primary: string, secondary: st
   const lowerText = allText.toLowerCase();
   const secondaryHits = secondary.filter((k) => coverage(tokenSet(k), tokenSet(lowerText)) >= 0.8 || lowerText.includes(k.toLowerCase()));
   const paragraphWords = paragraphs.map((p) => words(p).length);
-  const linkCount = (allText.match(/\]\(https?:\/\//g) ?? []).length;
+  // Distinct pages on the site itself (cited external sources don't count).
+  const bare = (h: string) => h.replace(/^www\./, "");
+  const linkCount = new Set(
+    [...allText.matchAll(/\]\((https?:\/\/[^)\s]+)\)/g)]
+      .map((m) => {
+        try {
+          const u = new URL(m[1]);
+          return !siteHost || bare(u.hostname) === bare(siteHost) ? u.origin + u.pathname.replace(/\/$/, "") : null;
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean),
+  ).size;
 
   return {
     words: totalWords,

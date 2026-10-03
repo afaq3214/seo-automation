@@ -122,6 +122,7 @@ The route **must** be `/blog/:slug`, because every article's canonical URL is `h
 <article>
   <h1>                                   title
   <figure class="featured-image"><img>   featured image (only if one exists)
+  <figure class="article-image"><img>    second image in the middle of the article (only if one exists)
   <p>, <h2>, <h3>, <ul>, <ol>, <li>, <strong>, <a href>
   <table><thead><tr><th>…<tbody><tr><td>
   <blockquote class="callout"><p>        tip / note
@@ -143,6 +144,7 @@ Starter CSS, to adjust to Callacy's design:
 .blog-content ol { list-style: decimal; padding-left: 1.5rem; }
 .blog-content a { color: #e11d48; text-decoration: underline; }
 .blog-content .featured-image img { width: 100%; height: auto; border-radius: 12px; margin-bottom: 1.5rem; }
+.blog-content .article-image img { width: 100%; height: auto; border-radius: 12px; margin: 1.5rem 0; }
 .blog-content table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: 0.95rem; }
 .blog-content th, .blog-content td { border: 1px solid #e5e7eb; padding: 0.6rem 0.8rem; text-align: left; vertical-align: top; }
 .blog-content th { background: #f9fafb; }

@@ -71,6 +71,16 @@ export default async function ArticlePage(props: PageProps<"/projects/[projectId
             alt={article.featured_image_alt}
             error={article.featured_image_error}
           />
+          <FeaturedImageCard
+            projectId={projectId}
+            articleId={article.id}
+            slot="inline"
+            heading={article.inline_image_heading}
+            status={article.inline_image_status ?? "none"}
+            url={article.inline_image_url}
+            alt={article.inline_image_alt}
+            error={article.inline_image_error}
+          />
           <OptimizationPanel
             projectId={projectId}
             articleId={article.id}
