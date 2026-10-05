@@ -34,7 +34,7 @@ export async function claudeJson<T extends z.ZodType>(options: {
       max_tokens: options.maxTokens ?? 4000,
       system: options.system,
       messages: [{ role: "user", content: options.user }],
-      output_config: { format: zodOutputFormat(options.schema), ...(options.effort ? { effort: options.effort } : {}) },
+      output_config: { format: zodOutputFormat(options.schema), ...(options.effort && !/haiku/i.test(model) ? { effort: options.effort } : {}) },
     });
   } catch (err) {
     throw friendlyError(err);

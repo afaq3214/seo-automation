@@ -475,7 +475,8 @@ export async function runQualityLoop(projectId: string, articleId: string, emit:
       aeo_score: current.scores.aeo,
       quality_report: report,
       quality_checked_at: new Date().toISOString(),
-      status,
+      // A live article stays live when it is scored after publishing.
+      status: article.status === "published" ? "published" : status,
       updated_at: new Date().toISOString(),
     })
     .eq("id", articleId);

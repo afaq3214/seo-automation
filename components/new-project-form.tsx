@@ -135,7 +135,7 @@ export function NewProjectForm() {
               <span>
                 <span className="font-medium">Run everything automatically</span>
                 <span className="block text-xs text-slate-500">
-                  Keywords, competitors and strategy, then one blog written and published every day. Strategy refreshes every 3 days.
+                  Keywords, competitors and strategy, then one blog written and published every day. Research refreshes every 20 days.
                 </span>
               </span>
             </label>

@@ -70,10 +70,12 @@ export async function nextStep(project: Project): Promise<{ step: AutoStep; arti
   if (project.auto_article_id) {
     const article = await getArticle(project.id, project.auto_article_id);
     if (article && article.status !== "published") {
-      if (!article.optimized_at) return { step: "optimize", article };
+      // With AUTO_OPTIMIZE_AFTER_DAYS > 0 the article is published as written and optimized later (step 5).
+      const optimizeFirst = cfg.AUTO_OPTIMIZE_AFTER_DAYS === 0;
+      if (optimizeFirst && !article.optimized_at) return { step: "optimize", article };
       if (cfg.OPENAI_API_KEY && ["none", "generating"].includes(article.featured_image_status)) return { step: "image_featured", article };
       if (cfg.OPENAI_API_KEY && ["none", "generating"].includes(article.inline_image_status ?? "none")) return { step: "image_inline", article };
-      if (!article.quality_checked_at) return { step: "quality", article };
+      if (optimizeFirst && !article.quality_checked_at) return { step: "quality", article };
       return { step: "publish", article };
     }
     await updateProject(project.id, { auto_article_id: null });
@@ -87,16 +89,41 @@ export async function nextStep(project: Project): Promise<{ step: AutoStep; arti
   const refreshMs = cfg.AUTO_STRATEGY_REFRESH_DAYS * DAY_MS;
   const strategyStale = olderThan(project.strategy_generated_at, refreshMs);
   if (!project.keywords_researched_at || (strategyStale && olderThan(project.keywords_researched_at, refreshMs))) return { step: "keywords" };
-  if (olderThan(project.competitors_discovered_at, cfg.COMPETITOR_TTL_DAYS * DAY_MS)) return { step: "competitors" };
+  if (olderThan(project.competitors_discovered_at, refreshMs)) return { step: "competitors" };
   if (strategyStale || Date.parse(project.keywords_researched_at) > Date.parse(project.strategy_generated_at!)) return { step: "strategy" };
 
   // 4. Today's article.
-  if (project.auto_next_post_at && Date.parse(project.auto_next_post_at) > Date.now()) return null;
-  const opportunity = await bestOpportunity(project.id);
+  const postDue = !project.auto_next_post_at || Date.parse(project.auto_next_post_at) <= Date.now();
+  const opportunity = postDue ? await bestOpportunity(project.id) : null;
   if (opportunity) return { step: "write", opportunity };
-  // Everything written: rebuild the strategy for fresh topics (at most once a day).
+
+  // 5. Published articles that reached the optimization age: optimize, then score.
+  if (cfg.AUTO_OPTIMIZE_AFTER_DAYS > 0) {
+    const article = await dueForOptimization(project.id, cfg.AUTO_OPTIMIZE_AFTER_DAYS);
+    if (article) return { step: article.optimized_at ? "quality" : "optimize", article };
+  }
+
+  if (!postDue) return null;
+  // Every topic is written: rebuild the strategy, and if that finds nothing new, refresh the keywords
+  // early (each at most once a day) so daily posting doesn't stop until the next scheduled refresh.
   if (olderThan(project.strategy_generated_at, DAY_MS)) return { step: "strategy" };
+  if (olderThan(project.keywords_researched_at, DAY_MS)) return { step: "keywords" };
   return null;
+}
+
+/** The oldest published article that is old enough and hasn't been optimized and scored yet. */
+async function dueForOptimization(projectId: string, afterDays: number): Promise<ArticleRow | null> {
+  const { data, error } = await supabaseAdmin()
+    .from("articles")
+    .select("*")
+    .eq("project_id", projectId)
+    .eq("status", "published")
+    .lt("publish_at", new Date(Date.now() - afterDays * DAY_MS).toISOString())
+    .or("optimized_at.is.null,quality_checked_at.is.null")
+    .order("publish_at")
+    .limit(1);
+  if (error) throw new Error(`Failed to load articles due for optimization: ${error.message}`);
+  return ((data ?? [])[0] as ArticleRow | undefined) ?? null;
 }
 
 /** The highest-scoring blog opportunity that hasn't been written yet. */
@@ -234,7 +261,7 @@ async function runStep(project: Project, next: NonNullable<Awaited<ReturnType<ty
     }
     case "optimize":
       await optimizeArticle(id, next.article!.id, noop);
-      return null;
+      return next.article!.status === "published" ? `Optimized "${next.article!.title}" (published ${env().AUTO_OPTIMIZE_AFTER_DAYS}+ days ago).` : null;
     case "image_featured":
     case "image_inline": {
       const slot = next.step === "image_featured" ? "featured" : "inline";
@@ -243,9 +270,12 @@ async function runStep(project: Project, next: NonNullable<Awaited<ReturnType<ty
       const status = updated[`${slot}_image_status`];
       return status === "failed" ? `${STEP_LABELS[next.step]} failed, publishing without it: ${updated[`${slot}_image_error`]}` : null;
     }
-    case "quality":
+    case "quality": {
       await runQualityLoop(id, next.article!.id, noop);
-      return null;
+      if (next.article!.status !== "published") return null;
+      const scored = await getArticle(id, next.article!.id);
+      return `Scored "${next.article!.title}": SEO ${scored?.seo_score}, GEO ${scored?.geo_score}, AEO ${scored?.aeo_score}.`;
+    }
     case "publish": {
       const article = await updatePublishing(id, next.article!.id, { status: "published" });
       await updateProject(id, { auto_article_id: null, auto_next_post_at: new Date(Date.now() + POST_INTERVAL_MS).toISOString() });
@@ -262,6 +292,14 @@ async function giveUp(project: Project, next: NonNullable<Awaited<ReturnType<typ
     const slot = next.step === "image_featured" ? "featured" : "inline";
     await db.from("articles").update({ [`${slot}_image_status`]: "failed", [`${slot}_image_error`]: reason }).eq("id", next.article.id);
     await logEvent(project.id, next.step, "error", `${reason}. Skipped; the article is published without it.`);
+    await updateProject(project.id, { auto_attempts: 0, auto_locked_until: null });
+    return;
+  }
+  if ((next.step === "optimize" || next.step === "quality") && next.article?.status === "published") {
+    // Late optimization of a live article: leave it as it is rather than block the daily posts.
+    const now = new Date().toISOString();
+    await db.from("articles").update({ optimized_at: next.article.optimized_at ?? now, quality_checked_at: now }).eq("id", next.article.id);
+    await logEvent(project.id, next.step, "error", `${reason}. Skipped for "${next.article.title}".`);
     await updateProject(project.id, { auto_attempts: 0, auto_locked_until: null });
     return;
   }

@@ -120,8 +120,6 @@ The list page calls the list endpoint with that region's key, and the article pa
 
 The routes **must** match these paths, because each article's canonical URL is `https://callacy.com/<region>/blog/<slug>` (or `/blog/<slug>` for the main site); the API returns it in `article.url`. A slug only exists in its own region: asking the AU key for a UK slug returns `404`. If a region's blog has to live somewhere else, ask for that project's `blog_base_url` to be changed in the SEO Automation app's database so canonical URLs match.
 
-**A slug can contain one slash**, e.g. `best-24/7-answering-service-for-small-business`. Use a catch-all route (`/nz/blog/*` in React Router, reading `params["*"]`) instead of `/:slug`, and put the slug into the API URL as it is, without `encodeURIComponent`.
-
 **Regions are separate articles, not translations.** Two regions can have articles on similar topics, written separately for each country. Don't add `hreflang` links between them unless they are genuinely the same article; each page's own canonical is enough.
 
 ---

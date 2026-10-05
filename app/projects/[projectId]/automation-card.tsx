@@ -18,6 +18,8 @@ export interface AutomationState {
   nextPostAt: string | null;
   strategyAt: string | null;
   refreshDays: number;
+  /** 0 = optimized before publishing */
+  optimizeAfterDays: number;
   articleInProgress: boolean;
 }
 
@@ -65,7 +67,7 @@ export function AutomationCard({ projectId, state, events }: { projectId: string
     <Card>
       <CardHeader
         title="Automation"
-        description={`Keywords, competitors and strategy refresh every ${state.refreshDays} days; one article is written and published daily.`}
+        description={`Keywords, competitors and strategy refresh every ${state.refreshDays} days; one article is written and published daily${state.optimizeAfterDays ? `, then optimized ${state.optimizeAfterDays} days later` : ""}.`}
         actions={
           <div className="flex items-center gap-2">
             <Badge tone={status[1]}>{status[0]}</Badge>

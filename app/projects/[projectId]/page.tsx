@@ -64,6 +64,7 @@ export default async function ProjectOverviewPage(props: PageProps<"/projects/[p
     nextPostAt: project.auto_next_post_at ?? null,
     strategyAt: project.strategy_generated_at,
     refreshDays: env().AUTO_STRATEGY_REFRESH_DAYS,
+    optimizeAfterDays: env().AUTO_OPTIMIZE_AFTER_DAYS,
     articleInProgress: !!project.auto_article_id,
   };
 
