@@ -11,6 +11,7 @@ import { crawlPendingBatch, pageCounts, queueSitemapPages } from "../crawler/ful
 import { generateArticleImage } from "../images/featured";
 import { researchKeywords } from "../keywords/research";
 import { getProject, updateProject } from "../projects";
+import { articlesDueForIndexCheck, checkIndexStatus, searchConsoleConfigured, submitSitemap } from "../searchConsole";
 import { generateStrategy } from "../strategy/generate";
 import { jaccard, tokenSet } from "../keywords/text";
 import { loadCrawledPages, topicCoverage } from "../strategy/coverage";
@@ -36,7 +37,8 @@ export type AutoStep =
   | "image_featured"
   | "image_inline"
   | "quality"
-  | "publish";
+  | "publish"
+  | "index_check";
 
 export const STEP_LABELS: Record<AutoStep, string> = {
   crawl_queue: "Finding all site pages",
@@ -50,6 +52,7 @@ export const STEP_LABELS: Record<AutoStep, string> = {
   image_inline: "Mid-article image",
   quality: "Quality scoring & improvement",
   publish: "Publishing",
+  index_check: "Checking Google index status",
 };
 
 /** A step that runs longer than this is assumed dead (the function timed out) and may be retried. */
@@ -105,6 +108,9 @@ export async function nextStep(project: Project): Promise<{ step: AutoStep; arti
     const article = await dueForOptimization(project.id, cfg.AUTO_OPTIMIZE_AFTER_DAYS);
     if (article) return { step: article.optimized_at ? "quality" : "optimize", article };
   }
+
+  // 6. Google index status of published articles (when Search Console is connected).
+  if ((await articlesDueForIndexCheck(project.id)).length) return { step: "index_check" };
 
   if (!postDue) return null;
   // Every topic is written: rebuild the strategy, and if that finds nothing new, refresh the keywords
@@ -310,9 +316,20 @@ async function runStep(project: Project, next: NonNullable<Awaited<ReturnType<ty
     case "publish": {
       const article = await updatePublishing(id, next.article!.id, { status: "published" });
       await updateProject(id, { auto_article_id: null, auto_next_post_at: new Date(Date.now() + POST_INTERVAL_MS).toISOString() });
+      // Tell Google the sitemap changed so the new post is discovered sooner (best effort).
+      let sitemapNote = "";
+      if (searchConsoleConfigured()) {
+        try {
+          sitemapNote = ` Sitemap ${await submitSitemap(project)} re-submitted to Google.`;
+        } catch (err) {
+          sitemapNote = ` Sitemap not submitted to Google: ${errorMessage(err)}.`;
+        }
+      }
       const scores = article?.seo_score != null ? ` (SEO ${article.seo_score}, GEO ${article.geo_score}, AEO ${article.aeo_score})` : "";
-      return `Published "${article?.title ?? next.article!.title}"${scores}.`;
+      return `Published "${article?.title ?? next.article!.title}"${scores}.${sitemapNote}`;
     }
+    case "index_check":
+      return checkIndexStatus(project);
   }
 }
 

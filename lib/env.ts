@@ -73,6 +73,8 @@ const envSchema = z.object({
 
   // Full automation: secret for the cron/tick endpoint, and how often the strategy is rebuilt
   CRON_SECRET: optional,
+  /** Google service account key (raw JSON or base64) for Search Console; locally google-service-account.json is used */
+  GOOGLE_SERVICE_ACCOUNT_JSON: optional,
   AUTO_STRATEGY_REFRESH_DAYS: z.coerce.number().min(1).max(90).default(20),
   /** Automation: optimize + score an article this many days after publishing (0 = before publishing) */
   AUTO_OPTIMIZE_AFTER_DAYS: z.coerce.number().min(0).max(365).default(20),

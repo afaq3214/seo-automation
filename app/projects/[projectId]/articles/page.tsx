@@ -3,6 +3,7 @@ import { Badge, buttonClass, Card, EmptyState, formatDate, formatNumber, Notice,
 import { errorMessage } from "@/lib/logger";
 import { listArticles, type ArticleSummary } from "@/lib/services/articles/repository";
 import { getProject } from "@/lib/services/projects";
+import { indexStatusByArticle } from "@/lib/services/searchConsole";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ export default async function ArticlesPage(props: PageProps<"/projects/[projectI
   }
   const words = articles.reduce((s, a) => s + a.word_count, 0);
   const project = await getProject(projectId);
+  const index = await indexStatusByArticle(projectId).catch(() => new Map());
 
   return (
     <div className="space-y-6">
@@ -64,7 +66,7 @@ export default async function ArticlesPage(props: PageProps<"/projects/[projectI
         />
       ) : (
         <Card>
-          <Table minWidth={760}>
+          <Table minWidth={860}>
             <thead>
               <tr>
                 <Th>Article</Th>
@@ -72,6 +74,7 @@ export default async function ArticlesPage(props: PageProps<"/projects/[projectI
                 <Th className="text-right">Words</Th>
                 <Th>Scores (SEO · GEO · AEO)</Th>
                 <Th>Status</Th>
+                <Th>Google</Th>
                 <Th>Created</Th>
               </tr>
             </thead>
@@ -93,6 +96,15 @@ export default async function ArticlesPage(props: PageProps<"/projects/[projectI
                     <Badge tone={a.status === "ready" ? "emerald" : a.status === "needs_review" ? "red" : "amber"}>
                       {a.status.replace("_", " ")}
                     </Badge>
+                  </Td>
+                  <Td>
+                    {index.get(a.id)?.checkedAt ? (
+                      <Badge tone={index.get(a.id)?.verdict === "PASS" ? "emerald" : "slate"} title={`${index.get(a.id)?.status} · checked ${formatDate(index.get(a.id)?.checkedAt)}`}>
+                        {index.get(a.id)?.verdict === "PASS" ? "Indexed" : "Not indexed"}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
+                    )}
                   </Td>
                   <Td className="whitespace-nowrap text-xs text-slate-500">{formatDate(a.created_at)}</Td>
                 </tr>

@@ -1,6 +1,9 @@
+import { after } from "next/server";
 import { z } from "zod";
 import { errorMessage, logger } from "@/lib/logger";
 import { getArticle, updatePublishing } from "@/lib/services/articles/repository";
+import { getProject } from "@/lib/services/projects";
+import { searchConsoleConfigured, submitSitemap } from "@/lib/services/searchConsole";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,6 +46,13 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/projects/[
   try {
     const article = await updatePublishing(projectId, articleId, parsed.data);
     if (!article) return Response.json({ error: "Article not found" }, { status: 404 });
+    // Published by hand: tell Google the sitemap changed (best effort, after responding).
+    if (parsed.data.status === "published" && searchConsoleConfigured()) {
+      after(async () => {
+        const project = await getProject(projectId);
+        if (project) await submitSitemap(project).catch((err) => logger.warn("sitemap submit failed", { projectId, error: errorMessage(err) }));
+      });
+    }
     return Response.json({ status: article.status, publish_at: article.publish_at });
   } catch (err) {
     logger.error("update publishing failed", { projectId, articleId, error: errorMessage(err) });
