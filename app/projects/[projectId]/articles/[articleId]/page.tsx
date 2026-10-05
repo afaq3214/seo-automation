@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
-import { Badge, Card, CardHeader, formatDate, formatNumber } from "@/components/ui";
+import { Badge, buttonClass, Card, CardHeader, formatDate, formatNumber } from "@/components/ui";
 import { getArticle } from "@/lib/services/articles/repository";
 import { getProject } from "@/lib/services/projects";
 import { ArticleTabs, type ArticleVersion } from "./article-tabs";
@@ -43,6 +43,9 @@ export default async function ArticlePage(props: PageProps<"/projects/[projectId
           <Badge tone={article.status === "ready" ? "emerald" : article.status === "needs_review" ? "red" : "amber"}>
             {article.status.replace("_", " ")}
           </Badge>
+          <Link href={`/projects/${projectId}/articles/${articleId}/edit`} className={`${buttonClass("secondary", "sm")} ml-auto`}>
+            Edit article
+          </Link>
         </div>
         <p className="mt-1 text-sm text-slate-500">
           {formatNumber(article.word_count)} words · created {formatDate(article.created_at)}

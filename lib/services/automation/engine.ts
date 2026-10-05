@@ -12,6 +12,8 @@ import { generateArticleImage } from "../images/featured";
 import { researchKeywords } from "../keywords/research";
 import { getProject, updateProject } from "../projects";
 import { generateStrategy } from "../strategy/generate";
+import { jaccard, tokenSet } from "../keywords/text";
+import { loadCrawledPages, topicCoverage } from "../strategy/coverage";
 import { listOpportunities } from "../strategy/repository";
 
 /**
@@ -81,12 +83,13 @@ export async function nextStep(project: Project): Promise<{ step: AutoStep; arti
     await updateProject(project.id, { auto_article_id: null });
   }
 
-  // 2. Whole site crawled (for internal links and to know what already exists).
-  if (!project.auto_pages_queued_at) return { step: "crawl_queue" };
+  // 2. Whole site crawled (for internal links and to know which topics already have a page). The sitemap
+  // is read again on every refresh so pages added since then are picked up.
+  const refreshMs = cfg.AUTO_STRATEGY_REFRESH_DAYS * DAY_MS;
+  if (olderThan(project.auto_pages_queued_at, refreshMs)) return { step: "crawl_queue" };
   if ((await pageCounts(project.id)).pending > 0) return { step: "crawl_batch" };
 
   // 3. Strategy inputs, refreshed on schedule.
-  const refreshMs = cfg.AUTO_STRATEGY_REFRESH_DAYS * DAY_MS;
   const strategyStale = olderThan(project.strategy_generated_at, refreshMs);
   if (!project.keywords_researched_at || (strategyStale && olderThan(project.keywords_researched_at, refreshMs))) return { step: "keywords" };
   if (olderThan(project.competitors_discovered_at, refreshMs)) return { step: "competitors" };
@@ -126,10 +129,38 @@ async function dueForOptimization(projectId: string, afterDays: number): Promise
   return ((data ?? [])[0] as ArticleRow | undefined) ?? null;
 }
 
-/** The highest-scoring blog opportunity that hasn't been written yet. */
+/** Two topics are the same when their main words overlap this much (Jaccard, stop words ignored). */
+const SAME_TOPIC = 0.6;
+
+/**
+ * The highest-scoring blog opportunity that hasn't been written yet AND isn't already covered: by an
+ * article this project wrote (any status), or by a page found in the site crawl. Covered topics are
+ * dismissed so they aren't considered again.
+ */
 async function bestOpportunity(projectId: string): Promise<ContentOpportunity | null> {
-  const list = await listOpportunities(projectId);
-  return list.find((o) => o.status === "new" && BLOG_TYPES.has(o.content_type)) ?? null;
+  const candidates = (await listOpportunities(projectId)).filter((o) => o.status === "new" && BLOG_TYPES.has(o.content_type));
+  if (!candidates.length) return null;
+
+  const db = supabaseAdmin();
+  const [{ data: articles, error }, pages] = await Promise.all([
+    db.from("articles").select("title,primary_keyword").eq("project_id", projectId),
+    loadCrawledPages(projectId),
+  ]);
+  if (error) throw new Error(`Failed to load articles: ${error.message}`);
+  const written = (articles ?? []).map((a) => ({ title: a.title as string, keyword: tokenSet(a.primary_keyword), heading: tokenSet(a.title) }));
+
+  for (const o of candidates) {
+    const keyword = tokenSet(o.primary_keyword);
+    const topic = tokenSet(o.topic);
+    const article = written.find((a) => jaccard(keyword, a.keyword) >= SAME_TOPIC || jaccard(topic, a.heading) >= SAME_TOPIC);
+    const page = article ? null : topicCoverage([o.primary_keyword], pages);
+    const coveredBy = article ? `the article "${article.title}"` : page?.level === "covered" ? page.pageUrl : null;
+    if (!coveredBy) return o;
+
+    await db.from("content_opportunities").update({ status: "dismissed", updated_at: new Date().toISOString() }).eq("id", o.id);
+    await logEvent(projectId, "write", "info", `Skipped topic "${o.topic}": already covered by ${coveredBy}.`);
+  }
+  return null;
 }
 
 /**

@@ -9,7 +9,7 @@ import { coverage, tokenSet } from "../keywords/text";
  * (title, H1, URL) plus sitemap URLs for pages the crawl didn't reach (e.g. blog posts).
  */
 
-interface SitePage {
+export interface SitePage {
   url: string;
   headingTokens: Set<string>; // title + H1
   slugTokens: Set<string>;
@@ -29,20 +29,26 @@ const MIN_STRONG_WORDS = 300;
 /** URL words that say nothing about a page's topic. */
 const GENERIC_SLUG = new Set(["industry", "industri", "solution", "blog", "resource", "page", "post", "feature", "en", "au", "us", "uk"]);
 
-export async function loadSitePages(projectId: string, siteUrl: string): Promise<SitePage[]> {
+/** The project's pages as stored by the crawl (no network). */
+export async function loadCrawledPages(projectId: string): Promise<SitePage[]> {
   const { data, error } = await supabaseAdmin()
     .from("project_pages")
     .select("url,title,h1,word_count,crawl_status")
-    .eq("project_id", projectId);
+    .eq("project_id", projectId)
+    .limit(5000);
   if (error) throw new Error(`Failed to load site pages: ${error.message}`);
 
-  const pages: SitePage[] = (data ?? []).map((p) => ({
+  return (data ?? []).map((p) => ({
     url: p.url,
     headingTokens: tokenSet(`${p.title ?? ""} ${p.h1 ?? ""}`),
     slugTokens: slugTokens(p.url),
     // Not crawled yet (or failed): only the URL is known, like a sitemap-only page.
     wordCount: p.crawl_status === "crawled" ? p.word_count : null,
   }));
+}
+
+export async function loadSitePages(projectId: string, siteUrl: string): Promise<SitePage[]> {
+  const pages = await loadCrawledPages(projectId);
 
   const crawled = new Set(pages.map((p) => p.url.replace(/\/$/, "")));
   try {

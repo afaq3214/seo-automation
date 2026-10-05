@@ -43,6 +43,9 @@ export const HUMAN_VOICE = [
   "- Be specific and concrete: real situations, real numbers from the data provided, what actually happens on a",
   "  normal day. Have a point of view where it's justified ('Honestly, for most small teams this is overkill.').",
   "- NEVER use em dashes (—) or en dashes (–) as punctuation. Use a full stop, comma, colon or brackets instead.",
+  "- Write country names in full, everywhere including titles, headings and meta text: New Zealand (not NZ),",
+  "  United States (not US, USA or U.S.), United Kingdom (not UK), Australia (not AU). The same goes for other",
+  "  abbreviations a reader might not know: write the full words, e.g. 'small and medium businesses' (not SMBs).",
   `- Never use these words or phrases: ${AI_TELLS.join(", ")}.`,
   "- No 'not just X, but Y' constructions, no rhetorical-question openers, no endless groups of three, no closing",
   "  sentence that just repeats what the section said, no hype or empty superlatives.",
@@ -57,10 +60,32 @@ export function stripDashes(text: string, kind: "body" | "heading" = "body"): st
     .replace(/:\s*:/g, ":");
 }
 
-/** Remove em/en dashes from every visible text field of an article. */
+const COUNTRY_NAMES: Record<string, string> = { NZ: "New Zealand", UK: "United Kingdom", US: "United States", USA: "United States", AU: "Australia" };
+
+/**
+ * Country abbreviations → full names ("NZ businesses" → "New Zealand businesses"). Case-sensitive, so the
+ * word "us" is untouched; link URLs and currency codes (NZ$, US$) are left alone.
+ */
+export function expandCountryNames(text: string): string {
+  return text
+    .split(/(\]\([^)]*\))/) // keep the "](url)" part of links as it is
+    .map((part, i) =>
+      i % 2
+        ? part
+        : part
+            .replace(/\bU\.S\.(?:A\.)?(?=\s*$|\s+[A-Z])/g, "United States.")
+            .replace(/\bU\.S\.(?:A\.)?/g, "United States")
+            .replace(/\b(NZ|UK|USA|US|AU)\b(?!\$)/g, (m) => COUNTRY_NAMES[m]),
+    )
+    .join("");
+}
+
+/** Clean every visible text field of an article: no em/en dashes, country names written in full. */
 export function stripArticleDashes(c: ArticleContent): ArticleContent {
-  const body = (s: string) => stripDashes(s);
-  const head = (s: string) => stripDashes(s, "heading");
+  const body = (s: string) => expandCountryNames(stripDashes(s));
+  const head = (s: string) => expandCountryNames(stripDashes(s, "heading"));
+  // Meta titles have a 60-character budget: only expand when the result still fits.
+  const metaTitle = (s: string) => (head(s).length <= 60 ? head(s) : stripDashes(s, "heading"));
   const block = (b: ArticleBlock): ArticleBlock => {
     switch (b.type) {
       case "paragraph":
@@ -75,7 +100,7 @@ export function stripArticleDashes(c: ArticleContent): ArticleContent {
   return {
     ...c,
     title: head(c.title),
-    metaTitle: head(c.metaTitle),
+    metaTitle: metaTitle(c.metaTitle),
     metaDescription: body(c.metaDescription),
     intro: c.intro.map(body),
     sections: c.sections.map((s) => ({ ...s, heading: head(s.heading), blocks: s.blocks.map(block) })),
