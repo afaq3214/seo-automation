@@ -100,7 +100,7 @@ function ruleGrades(content: ArticleContent, ctx: Ctx): { grades: Record<string,
     brand: ctx.brand,
     language: project.language,
   });
-  const keyword = article.primary_keyword.toLowerCase();
+  const keyword = article.primary_keyword.toLowerCase().replace(/-/g, " ");
   const g: Record<string, Grade> = {};
 
   const t = x.topicCoverage;
@@ -124,7 +124,7 @@ function ruleGrades(content: ArticleContent, ctx: Ctx): { grades: Record<string,
 
   const metaIssues = [
     (content.metaTitle.length < 30 || content.metaTitle.length > 60) && `meta title ${content.metaTitle.length} chars (30-60)`,
-    !content.metaTitle.toLowerCase().includes(keyword) && "meta title lacks the primary keyword",
+    !content.metaTitle.toLowerCase().replace(/-/g, " ").includes(keyword) && "meta title lacks the primary keyword",
     (content.metaDescription.length < 110 || content.metaDescription.length > 160) && `meta description ${content.metaDescription.length} chars (120-160)`,
     article.slug.length > 75 && "slug over 75 chars",
   ].filter(Boolean) as string[];

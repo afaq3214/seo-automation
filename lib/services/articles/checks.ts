@@ -48,8 +48,10 @@ export function measureArticle(c: ArticleContent, primary: string, secondary: st
   ].join("\n");
 
   const totalWords = words(allText).length;
-  const phrase = primary.toLowerCase();
-  const count = (text: string) => text.toLowerCase().split(phrase).length - 1;
+  // Hyphens count as spaces: article text is written without word-joining hyphens.
+  const norm = (s: string) => s.toLowerCase().replace(/-/g, " ");
+  const phrase = norm(primary);
+  const count = (text: string) => norm(text).split(phrase).length - 1;
   const primaryCount = count(allText);
   const introText = c.intro.join(" ");
 
@@ -70,8 +72,8 @@ export function measureArticle(c: ArticleContent, primary: string, secondary: st
     if (first?.type === "paragraph" && words(first.text).length <= MAX_DIRECT_ANSWER_WORDS) directAnswers++;
   }
 
-  const lowerText = allText.toLowerCase();
-  const secondaryHits = secondary.filter((k) => coverage(tokenSet(k), tokenSet(lowerText)) >= 0.8 || lowerText.includes(k.toLowerCase()));
+  const lowerText = norm(allText);
+  const secondaryHits = secondary.filter((k) => coverage(tokenSet(k), tokenSet(lowerText)) >= 0.8 || lowerText.includes(norm(k)));
   const paragraphWords = paragraphs.map((p) => words(p).length);
   // Distinct pages on the site itself (cited external sources don't count).
   const bare = (h: string) => h.replace(/^www\./, "");
@@ -92,9 +94,9 @@ export function measureArticle(c: ArticleContent, primary: string, secondary: st
     words: totalWords,
     primaryKeywordCount: primaryCount,
     primaryKeywordDensity: totalWords ? Math.round(((primaryCount * phrase.split(/\s+/).length) / totalWords) * 1000) / 10 : 0,
-    primaryInTitle: c.title.toLowerCase().includes(phrase),
-    primaryInIntro: introText.toLowerCase().includes(phrase),
-    primaryInH2: c.sections.some((s) => s.level === 2 && s.heading.toLowerCase().includes(phrase)),
+    primaryInTitle: norm(c.title).includes(phrase),
+    primaryInIntro: norm(introText).includes(phrase),
+    primaryInH2: c.sections.some((s) => s.level === 2 && norm(s.heading).includes(phrase)),
     secondaryCoverage: secondary.length ? Math.round((secondaryHits.length / secondary.length) * 100) / 100 : 1,
     h2Count: c.sections.filter((s) => s.level === 2).length,
     h3Count: c.sections.filter((s) => s.level === 3).length,

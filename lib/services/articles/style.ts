@@ -43,6 +43,9 @@ export const HUMAN_VOICE = [
   "- Be specific and concrete: real situations, real numbers from the data provided, what actually happens on a",
   "  normal day. Have a point of view where it's justified ('Honestly, for most small teams this is overkill.').",
   "- NEVER use em dashes (—) or en dashes (–) as punctuation. Use a full stop, comma, colon or brackets instead.",
+  "- No hyphens joining words either. Write 'after hours', 'AI powered', 'per minute', 'full time', 'follow up',",
+  "  'real time' as separate words, 'ecommerce' and 'nonnegotiable' as one word, and number ranges as '5 to 10'.",
+  "  If a phrase reads badly without its hyphen, reword the sentence.",
   "- Write country names in full, everywhere including titles, headings and meta text: New Zealand (not NZ),",
   "  United States (not US, USA or U.S.), United Kingdom (not UK), Australia (not AU). The same goes for other",
   "  abbreviations a reader might not know: write the full words, e.g. 'small and medium businesses' (not SMBs).",
@@ -58,6 +61,26 @@ export function stripDashes(text: string, kind: "body" | "heading" = "body"): st
     .replace(/\s*[—–]\s*/g, kind === "heading" ? ": " : ", ")
     .replace(/,\s*([,.;:!?])/g, "$1")
     .replace(/:\s*:/g, ":");
+}
+
+/**
+ * Remove hyphens that join words: "after-hours" → "after hours", "AI-powered" → "AI powered",
+ * "non-negotiable" → "nonnegotiable", "5-10" → "5 to 10". Link URLs and phone-style digit groups
+ * (1300-123-456) are left alone.
+ */
+export function removeHyphens(text: string): string {
+  return text
+    .split(/(\]\([^)]*\))/) // keep the "](url)" part of links as it is
+    .map((part, i) =>
+      i % 2
+        ? part
+        : part
+            .replace(/\b(wi)-(fi)\b/gi, "$1$2")
+            .replace(/\b(non|co|re|pre|e|anti|multi|semi)-(?=[a-z])/gi, "$1")
+            .replace(/(?<![\d-])(\d{1,4})-(\d{1,4})(?![\d-])/g, "$1 to $2")
+            .replace(/(?<=[A-Za-z0-9])-(?=[A-Za-z])|(?<=[A-Za-z])-(?=[0-9])/g, " "),
+    )
+    .join("");
 }
 
 const COUNTRY_NAMES: Record<string, string> = { NZ: "New Zealand", UK: "United Kingdom", US: "United States", USA: "United States", AU: "Australia" };
@@ -80,12 +103,12 @@ export function expandCountryNames(text: string): string {
     .join("");
 }
 
-/** Clean every visible text field of an article: no em/en dashes, country names written in full. */
+/** Clean every visible text field of an article: no dashes or word-joining hyphens, country names written in full. */
 export function stripArticleDashes(c: ArticleContent): ArticleContent {
-  const body = (s: string) => expandCountryNames(stripDashes(s));
-  const head = (s: string) => expandCountryNames(stripDashes(s, "heading"));
+  const body = (s: string) => removeHyphens(expandCountryNames(stripDashes(s)));
+  const head = (s: string) => removeHyphens(expandCountryNames(stripDashes(s, "heading")));
   // Meta titles have a 60-character budget: only expand when the result still fits.
-  const metaTitle = (s: string) => (head(s).length <= 60 ? head(s) : stripDashes(s, "heading"));
+  const metaTitle = (s: string) => (head(s).length <= 60 ? head(s) : removeHyphens(stripDashes(s, "heading")));
   const block = (b: ArticleBlock): ArticleBlock => {
     switch (b.type) {
       case "paragraph":
