@@ -2,7 +2,7 @@ import { env } from "@/lib/env";
 import { errorMessage, logger } from "@/lib/logger";
 import { supabaseAdmin } from "@/lib/supabase";
 import type { ArticleRow, ContentOpportunity, Project } from "@/lib/types";
-import { generateArticle } from "../articles/generate";
+import { prepareArticle, writePreparedArticle } from "../articles/generate";
 import { optimizeArticle } from "../articles/optimize";
 import { runQualityLoop } from "../articles/quality";
 import { getArticle, updatePublishing } from "../articles/repository";
@@ -32,6 +32,7 @@ export type AutoStep =
   | "keywords"
   | "competitors"
   | "strategy"
+  | "brief"
   | "write"
   | "optimize"
   | "image_featured"
@@ -46,6 +47,7 @@ export const STEP_LABELS: Record<AutoStep, string> = {
   keywords: "Keyword research",
   competitors: "Competitor analysis",
   strategy: "Content strategy",
+  brief: "Researching and planning today's article",
   write: "Writing today's article",
   optimize: "SEO/GEO/AEO optimization",
   image_featured: "Featured image",
@@ -101,7 +103,8 @@ export async function nextStep(project: Project): Promise<{ step: AutoStep; arti
   // 4. Today's article.
   const postDue = !project.auto_next_post_at || Date.parse(project.auto_next_post_at) <= Date.now();
   const opportunity = postDue ? await bestOpportunity(project.id) : null;
-  if (opportunity) return { step: "write", opportunity };
+  // Two steps so each fits in one run: research + brief first, then the article from the saved brief.
+  if (opportunity) return { step: opportunity.brief_json && opportunity.research_json ? "write" : "brief", opportunity };
 
   // 5. Published articles that reached the optimization age: optimize, then score.
   if (cfg.AUTO_OPTIMIZE_AFTER_DAYS > 0) {
@@ -286,14 +289,24 @@ async function runStep(project: Project, next: NonNullable<Awaited<ReturnType<ty
       const open = list.filter((o) => o.status === "new" && BLOG_TYPES.has(o.content_type));
       return `Strategy refreshed: ${open.length} blog opportunities${open[0] ? `, best is "${open[0].topic}" (score ${open[0].opportunity_score})` : ""}.`;
     }
+    case "brief": {
+      const opportunity = next.opportunity!;
+      const prepared = await prepareArticle(project, opportunity, noop);
+      const { error } = await supabaseAdmin()
+        .from("content_opportunities")
+        .update({ brief_json: prepared.brief, research_json: prepared.research })
+        .eq("id", opportunity.id);
+      if (!error) return null;
+      // Migration 014 not run yet: nowhere to keep the brief, so write the article in this same step.
+      logger.warn("prepared brief not saved, writing in one step", { error: error.message });
+      const article = await writePreparedArticle(project, opportunity, prepared, noop);
+      await updateProject(id, { auto_article_id: article.id });
+      return `Writing "${opportunity.topic}" (keyword "${opportunity.primary_keyword}", score ${opportunity.opportunity_score}).`;
+    }
     case "write": {
       const opportunity = next.opportunity!;
-      let article: ArticleRow | null = null;
-      await generateArticle(id, opportunity.id, (e) => {
-        if (e.type === "complete") article = e.article;
-      });
-      if (!article) throw new Error("The article was not saved");
-      await updateProject(id, { auto_article_id: (article as ArticleRow).id });
+      const article = await writePreparedArticle(project, opportunity, { brief: opportunity.brief_json!, research: opportunity.research_json! }, noop);
+      await updateProject(id, { auto_article_id: article.id });
       return `Writing "${opportunity.topic}" (keyword "${opportunity.primary_keyword}", score ${opportunity.opportunity_score}).`;
     }
     case "optimize":
@@ -333,6 +346,9 @@ async function runStep(project: Project, next: NonNullable<Awaited<ReturnType<ty
   }
 }
 
+/** Errors caused by the AI account or provider, not by the topic being written. */
+const ACCOUNT_PROBLEM = /out of credit|credits|API key|rate limit|overloaded|unavailable|did not respond|not set|model not found/i;
+
 /** A step failed too often: skip what can be skipped, otherwise pause the project until tomorrow. */
 async function giveUp(project: Project, next: NonNullable<Awaited<ReturnType<typeof nextStep>>>, reason: string) {
   const db = supabaseAdmin();
@@ -351,7 +367,13 @@ async function giveUp(project: Project, next: NonNullable<Awaited<ReturnType<typ
     await updateProject(project.id, { auto_attempts: 0, auto_locked_until: null });
     return;
   }
-  if (next.step === "write" && next.opportunity) {
+  if ((next.step === "write" || next.step === "brief") && next.opportunity && ACCOUNT_PROBLEM.test(project.auto_error ?? "")) {
+    // Out of credits, a bad key or the provider being down says nothing about the topic: keep it and wait.
+    await logEvent(project.id, next.step, "error", `${reason}: ${project.auto_error}. The topic is kept; trying again in 6 hours.`);
+    await updateProject(project.id, { auto_attempts: 0, auto_retry_at: new Date(Date.now() + 6 * 3_600_000).toISOString(), auto_locked_until: null });
+    return;
+  }
+  if ((next.step === "write" || next.step === "brief") && next.opportunity) {
     // Don't get stuck on one topic: move on to the next opportunity.
     await db.from("content_opportunities").update({ status: "dismissed" }).eq("id", next.opportunity.id);
     await logEvent(project.id, next.step, "error", `${reason}. Skipped topic "${next.opportunity.topic}".`);

@@ -19,7 +19,7 @@ import { ArticleError, siteContext } from "./generate";
 import { countWords, renderArticleHtml, wordLimits } from "./html";
 import { refreshArticleOutputs, sourceUrlsOf } from "./render";
 import { getArticle } from "./repository";
-import { HUMAN_VOICE, stripArticleDashes } from "./style";
+import { dateContext, HUMAN_VOICE, stripArticleDashes } from "./style";
 import { blockSchema, normalizeArticle } from "./writer";
 
 const MAX_EDITS = 8;
@@ -242,6 +242,7 @@ export async function revise(
     maxTokens: 12000,
     system: REVISE_SYSTEM,
     user: [
+      dateContext(),
       `PRIMARY KEYWORD: ${brief.primaryKeyword} · READER: ${brief.targetReader}`,
       `LENGTH: the whole article (now ${countWords(content)} words) must stay between ${wordLimits().min} and ${wordLimits().max} words.`,
       countWords(content) < wordLimits().min

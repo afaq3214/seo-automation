@@ -12,6 +12,13 @@ const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   ANTHROPIC_API_KEY: z.string().min(1),
   ANTHROPIC_MODEL: z.string().min(1).default("claude-sonnet-4-6"),
+  /** Which provider writes text by default: Claude (Anthropic) or Kimi (Moonshot AI) */
+  AI_PROVIDER: z.enum(["anthropic", "kimi"]).default("anthropic"),
+  KIMI_API_KEY: optional,
+  KIMI_MODEL: z.string().min(1).default("kimi-k3"),
+  /** Kimi's hidden reasoning more than doubles response time; off keeps a full article inside one 5-minute step */
+  KIMI_THINKING: z.enum(["enabled", "disabled"]).default("disabled"),
+  KIMI_BASE_URL: z.string().default("https://api.moonshot.ai/v1").transform((v) => v.replace(/\/+$/, "")),
   CRAWL_MAX_PAGES: z.coerce.number().int().min(1).max(100).default(25),
   /** Full-site crawl: max pages stored per project, and pages crawled per request */
   CRAWL_MAX_SITE_PAGES: z.coerce.number().int().min(25).max(5000).default(1000),

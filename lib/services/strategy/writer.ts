@@ -4,6 +4,7 @@ import { errorMessage, logger } from "@/lib/logger";
 import type { BusinessAnalysis, CompetitorRanking, ContentType, SearchIntent } from "@/lib/types";
 import { chunk, mapWithConcurrency } from "../keywords/text";
 import { keywordStrength, type Topic } from "./topics";
+import { dateContext } from "../articles/style";
 
 export interface StrategyInput {
   topic: Topic;
@@ -66,6 +67,7 @@ export async function writeStrategies(analysis: BusinessAnalysis, inputs: Strate
         maxTokens: 6000,
         system: SYSTEM,
         user: [
+          dateContext(),
           `Business: ${analysis.businessType}`,
           `Offerings: ${analysis.mainOfferings.join("; ")}`,
           `Customers: ${analysis.targetCustomer}`,

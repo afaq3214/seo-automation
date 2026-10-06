@@ -2,6 +2,7 @@ import { z } from "zod";
 import { claudeJson } from "@/lib/anthropic";
 import type { BusinessAnalysis, ContentBrief, ContentOpportunity, SerpResearch } from "@/lib/types";
 import { wordLimits } from "./html";
+import { dateContext } from "./style";
 
 const briefSchema = z.object({
   searchIntent: z.enum(["informational", "commercial", "transactional", "navigational"]),
@@ -19,6 +20,9 @@ const briefSchema = z.object({
   ctaIdea: z.string(),
 });
 
+const MAX_H2 = 7;
+const MAX_H3_PER_H2 = 2;
+
 const SYSTEM = [
   "You are an SEO content strategist writing a content brief for one page.",
   "You get the target keyword, the business, today's Google top 10 (titles + snippets), 'People also ask'",
@@ -29,7 +33,7 @@ const SYSTEM = [
   "- commonQuestions: real questions searchers have (prefer 'People also ask'), 5-8",
   "- differentiatingAngles: what the top results miss or do poorly that this business can add",
   "  (first-hand expertise, local specifics, pricing transparency, decision frameworks, examples)",
-  "- outline: H1 plus 5-9 H2 sections with H3s where useful; notes say what each section must deliver",
+  "- outline: H1 plus 5-7 H2 sections, each with at most 2 H3s (none is fine); notes say what each section must deliver",
   "- recommendedWordCount: roughly the competitive length, but always within the length range given",
   "- ctaIdea: a relevant next step for this reader with this business",
   "Keep the primary keyword as given. Pick secondary keywords only from the provided list.",
@@ -53,6 +57,7 @@ export async function createBrief(input: {
     maxTokens: 6000,
     system: SYSTEM,
     user: [
+      dateContext(),
       `PRIMARY KEYWORD: ${o.primary_keyword}`,
       `Article length: ${minWords}-${maxWords} words. Plan enough sections and depth to reach at least ${minWords} words`,
       "with genuinely useful content (examples, steps, checklists), and not so many that it would pass the maximum.",
@@ -89,6 +94,9 @@ export async function createBrief(input: {
   const allowed = new Set(o.secondary_keywords.map((k) => k.toLowerCase()));
   return {
     ...brief,
+    // A long outline is what makes writers overshoot the word limit: cap it.
+    outline: { ...brief.outline, sections: brief.outline.sections.slice(0, MAX_H2).map((s) => ({ ...s, h3s: s.h3s.slice(0, MAX_H3_PER_H2) })) },
+    commonQuestions: brief.commonQuestions.slice(0, 8),
     primaryKeyword: o.primary_keyword,
     secondaryKeywords: brief.secondaryKeywords.filter((k) => allowed.has(k.toLowerCase())).slice(0, 10),
     // Aim inside the range, a little above the minimum and ~85% of the maximum: writers drift both ways.

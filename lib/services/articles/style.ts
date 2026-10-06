@@ -54,6 +54,33 @@ export const HUMAN_VOICE = [
   "  sentence that just repeats what the section said, no hype or empty superlatives.",
 ].join("\n");
 
+/**
+ * Today's date for a prompt. Models otherwise assume the year their training ended and write
+ * "in 2025" as if it were current.
+ */
+export function dateContext(now = new Date()): string {
+  const year = now.getUTCFullYear();
+  const date = now.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  return [
+    `TODAY'S DATE: ${date}. The current year is ${year}.`,
+    `Whenever the text refers to the present ("this year", "in ${year}", a "${year} guide", "as of ${year}", current trends or`,
+    `pricing), the year is ${year}. Never present ${year - 1} or any earlier year as current. A year that belongs to a cited`,
+    "statistic or study stays exactly as in its source.",
+  ].join(" ");
+}
+
+/**
+ * Bring "current year" mentions up to date ("Best X in 2025" → "Best X in 2026"). A year next to a cited
+ * study, survey or report is left as it is.
+ */
+export function updateStaleYear(text: string, currentYear = new Date().getUTCFullYear()): string {
+  const cited = "(?:\\s+(?:\\w+\\s+){0,2}(?:study|survey|report|research|data|census|analysis|poll|figures|statistics))";
+  return text
+    .split(/(\]\([^)]*\))/) // keep the "](url)" part of links as it is
+    .map((part, i) => (i % 2 ? part : part.replace(new RegExp(`\\b${currentYear - 1}\\b(?!${cited})`, "g"), String(currentYear))))
+    .join("");
+}
+
 /** Replace em/en dashes: number ranges get a hyphen; titles/headings a colon; body text a comma. */
 export function stripDashes(text: string, kind: "body" | "heading" = "body"): string {
   return text

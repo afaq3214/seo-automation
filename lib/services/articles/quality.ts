@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { claudeJson } from "@/lib/anthropic";
+import { claudeJson, defaultModel } from "@/lib/anthropic";
 import { env } from "@/lib/env";
 import { errorMessage, logger } from "@/lib/logger";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -298,9 +298,9 @@ async function judge(content: ArticleContent, article: ArticleRow, votes: number
     try {
       runs.push(await judgeOnce(content, article, model));
     } catch (err) {
-      if (runs.length === 0 && model !== env().ANTHROPIC_MODEL) {
+      if (runs.length === 0 && model !== defaultModel()) {
         logger.warn("judge model failed, falling back to the writer model", { model, error: errorMessage(err) });
-        model = env().ANTHROPIC_MODEL;
+        model = defaultModel();
         runs.push(await judgeOnce(content, article, model));
       } else throw err;
     }

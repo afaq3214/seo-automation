@@ -217,6 +217,9 @@ export interface CompetitorRanking {
 
 /** A row of content_opportunities as returned by the API. */
 export interface ContentOpportunity {
+  /** Brief + research prepared by the automation's "brief" step, used by the next "write" step (migration 014) */
+  brief_json?: ContentBrief | null;
+  research_json?: SerpResearch | null;
   id: string;
   project_id: string;
   topic: string;

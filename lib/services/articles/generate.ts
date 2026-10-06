@@ -1,7 +1,7 @@
 import { errorMessage, logger } from "@/lib/logger";
 import { supabaseAdmin } from "@/lib/supabase";
 import { siteBase } from "@/lib/url";
-import type { ArticleContent, ArticleEdit, ArticleEvent, ContentBrief, ContentOpportunity, Project } from "@/lib/types";
+import type { ArticleContent, ArticleEdit, ArticleEvent, ArticleRow, ContentBrief, ContentOpportunity, Project, SerpResearch } from "@/lib/types";
 import { coverage, tokenSet } from "../keywords/text";
 import { getProject } from "../projects";
 import { createBrief } from "./brief";
@@ -36,7 +36,18 @@ export async function generateArticle(
   if (!project) throw new ArticleError("Project not found", 404);
   if (!project.analysis) throw new ArticleError("Run the website analysis for this project first", 409);
   const opportunity = await loadOpportunity(projectId, opportunityId);
+  const prepared = await prepareArticle(project, opportunity, emit);
+  await writePreparedArticle(project, opportunity, prepared, emit);
+}
 
+export interface PreparedArticle {
+  brief: ContentBrief;
+  research: SerpResearch;
+}
+
+/** First half: Google research, competitor outlines, real-world data and the content brief. */
+export async function prepareArticle(project: Project, opportunity: ContentOpportunity, emit: (e: ArticleEvent) => void): Promise<PreparedArticle> {
+  if (!project.analysis) throw new ArticleError("Run the website analysis for this project first", 409);
   emit({ type: "step", step: "serp", message: "Researching Google results" });
   const serp = await fetchSerpResearch(project, opportunity.primary_keyword);
   if (!serp.organic.length) throw new ArticleError(`Google returned no results for "${opportunity.primary_keyword}"`);
@@ -58,6 +69,19 @@ export async function generateArticle(
 
   emit({ type: "step", step: "brief", message: "Creating content brief" });
   const brief = await createBrief({ opportunity, analysis: project.analysis, research, domain: project.domain });
+  return { brief, research };
+}
+
+/** Second half: write the article from a prepared brief, bring it into the word range and save the draft. */
+export async function writePreparedArticle(
+  project: Project,
+  opportunity: ContentOpportunity,
+  { brief, research }: PreparedArticle,
+  emit: (e: ArticleEvent) => void,
+): Promise<ArticleRow> {
+  if (!project.analysis) throw new ArticleError("Run the website analysis for this project first", 409);
+  const projectId = project.id;
+  const dataSources = research.dataSources ?? [];
 
   emit({ type: "step", step: "writing", message: "Writing article" });
   const { facts, links } = await siteContext(project, brief);
@@ -107,6 +131,7 @@ export async function generateArticle(
   logger.info("article draft saved", { projectId, articleId: saved.id, words: saved.word_count });
   emit({ type: "step", step: "complete", message: "Complete" });
   emit({ type: "complete", article: saved });
+  return saved;
 }
 
 /** Edits that deepen the thinnest H2 sections, sharing the missing words between them (with headroom). */

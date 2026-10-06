@@ -3,7 +3,7 @@ import { claudeJson } from "@/lib/anthropic";
 import { env } from "@/lib/env";
 import type { ArticleBlock, ArticleContent, BusinessAnalysis, ContentBrief, DataSource } from "@/lib/types";
 import { wordLimits } from "./html";
-import { HUMAN_VOICE, stripArticleDashes } from "./style";
+import { dateContext, HUMAN_VOICE, stripArticleDashes } from "./style";
 
 // One flat block shape keeps the JSON schema simple; it's narrowed into ArticleBlock afterwards.
 export const blockSchema = z.object({
@@ -100,6 +100,8 @@ export async function writeArticle(input: {
     maxTokens: Math.min(16000, Math.round(env().ARTICLE_MAX_WORDS * 2.2) + 1500),
     system: SYSTEM,
     user: [
+      dateContext(),
+      "",
       "CONTENT BRIEF",
       JSON.stringify(b, null, 2),
       "",
@@ -121,7 +123,9 @@ export async function writeArticle(input: {
       "",
       `Target length: about ${b.recommendedWordCount} words. MINIMUM ${wordLimits().min} words, HARD LIMIT ${wordLimits().max} words`,
       "in total, counting intro, sections, FAQ and CTA. Reach the minimum with depth (examples, steps, specifics,",
-      "real situations), never with filler or repetition.",
+      `real situations), never with filler or repetition. Word budget: intro about 120 words, each of the ${b.outline.sections.length} H2`,
+      `sections (including its H3s) about ${Math.round((b.recommendedWordCount - 120 - 420) / Math.max(1, b.outline.sections.length))} words, the FAQ about 350 words in total, the CTA about 60.`,
+      "Count as you write and stop each part at its budget: an article over the hard limit is rejected.",
     ].join("\n"),
   });
   return normalizeArticle(raw);
@@ -154,7 +158,7 @@ export function normalizeArticle(raw: z.infer<typeof articleSchema>): ArticleCon
     slug: raw.slug,
     intro: raw.intro.filter((p) => p.trim()),
     sections,
-    faq: raw.faq.filter((f) => f.question.trim() && f.answer.trim()),
+    faq: raw.faq.filter((f) => f.question.trim() && f.answer.trim()).slice(0, 6),
     cta: raw.cta,
   });
 }
