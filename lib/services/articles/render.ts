@@ -4,12 +4,15 @@ import type { ArticleContent, ArticleRow, FeaturedImage, Project } from "@/lib/t
 import { getProject } from "../projects";
 import { IMAGE_SIZE } from "../images/openaiImage";
 import { renderArticleHtml, type InlineImage } from "./html";
+import { limitExternalLinks } from "./style";
 import { getArticle } from "./repository";
 
 /** URLs of the researched data sources the article may cite (rendered as external links). */
 export function sourceUrlsOf(article: ArticleRow): string[] {
   return (article.serp_research?.dataSources ?? []).map((s) => s.url);
 }
+
+const MAX_EXTERNAL_LINKS = 3;
 
 /** The article's featured image, if one is ready. */
 export function featuredImageOf(article: ArticleRow): FeaturedImage | null {
@@ -86,14 +89,19 @@ export async function refreshArticleOutputs(projectId: string, articleId: string
   const image = featuredImageOf(article);
   const sources = sourceUrlsOf(article);
   const inline = inlineImageOf(article);
-  const finalContent = article.optimized_json ?? article.content_json;
+  // House rule: at most MAX_EXTERNAL_LINKS links to other websites per article.
+  const contentJson = limitExternalLinks(article.content_json, host, MAX_EXTERNAL_LINKS);
+  const optimizedJson = article.optimized_json ? limitExternalLinks(article.optimized_json, host, MAX_EXTERNAL_LINKS) : null;
+  const finalContent = optimizedJson ?? contentJson;
   const now = new Date().toISOString();
 
   const { data, error } = await supabaseAdmin()
     .from("articles")
     .update({
-      content_html: renderArticleHtml(article.content_json, host, image, sources, inline),
-      optimized_html: article.optimized_json ? renderArticleHtml(article.optimized_json, host, image, sources, inline) : null,
+      content_json: contentJson,
+      optimized_json: optimizedJson,
+      content_html: renderArticleHtml(contentJson, host, image, sources, inline),
+      optimized_html: optimizedJson ? renderArticleHtml(optimizedJson, host, image, sources, inline) : null,
       schema_json: buildSchema(finalContent, project, [image, inline], { created: article.created_at, updated: now }),
       excerpt: finalContent.metaDescription || null,
       faq_json: finalContent.faq,

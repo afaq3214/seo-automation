@@ -48,6 +48,12 @@ export async function saveDraft(article: NewArticle): Promise<ArticleRow> {
     .eq("project_id", article.project_id)
     .like("slug", `${article.slug}%`);
   const slugs = new Set((taken ?? []).map((r) => r.slug as string));
+  // Pages the site already has under the same last URL segment (e.g. a hand-written /blog/<slug>).
+  const { data: sitePages } = await db.from("project_pages").select("url").eq("project_id", article.project_id).like("url", `%/${article.slug}%`);
+  for (const p of sitePages ?? []) {
+    const last = (p.url as string).replace(/[?#].*$/, "").replace(/\/+$/, "").split("/").pop();
+    if (last) slugs.add(last);
+  }
   let slug = article.slug;
   for (let n = 2; slugs.has(slug); n++) slug = `${article.slug}-${n}`;
 

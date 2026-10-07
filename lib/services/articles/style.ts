@@ -130,6 +130,33 @@ export function expandCountryNames(text: string): string {
     .join("");
 }
 
+/**
+ * Keep only the first `max` links to other websites (in reading order); later ones become plain text.
+ * Links to the site itself are never touched.
+ */
+export function limitExternalLinks(c: ArticleContent, siteHost: string, max = 3): ArticleContent {
+  const bare = (h: string) => h.replace(/^www\./, "").toLowerCase();
+  let seen = 0;
+  const fix = (text: string) =>
+    text.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (whole, label: string, url: string) => {
+      try {
+        if (bare(new URL(url).hostname) === bare(siteHost)) return whole;
+      } catch {
+        return label;
+      }
+      return ++seen <= max ? whole : label;
+    });
+  const block = (b: ArticleBlock): ArticleBlock =>
+    b.type === "list" ? { ...b, items: b.items.map(fix) } : b.type === "table" ? { ...b, rows: b.rows.map((r) => r.map(fix)) } : { ...b, text: fix(b.text) };
+  return {
+    ...c,
+    intro: c.intro.map(fix),
+    sections: c.sections.map((s) => ({ ...s, blocks: s.blocks.map(block) })),
+    faq: c.faq.map((f) => ({ ...f, answer: fix(f.answer) })),
+    cta: { ...c.cta, text: fix(c.cta.text) },
+  };
+}
+
 /** Clean every visible text field of an article: no dashes or word-joining hyphens, country names written in full. */
 export function stripArticleDashes(c: ArticleContent): ArticleContent {
   const body = (s: string) => removeHyphens(expandCountryNames(stripDashes(s)));

@@ -14,7 +14,7 @@ import { getProject, updateProject } from "../projects";
 import { articlesDueForIndexCheck, checkIndexStatus, searchConsoleConfigured, submitSitemap } from "../searchConsole";
 import { generateStrategy } from "../strategy/generate";
 import { jaccard, tokenSet } from "../keywords/text";
-import { loadCrawledPages, topicCoverage } from "../strategy/coverage";
+import { loadSitePages, topicCoverage } from "../strategy/coverage";
 import { listOpportunities } from "../strategy/repository";
 
 /**
@@ -102,7 +102,7 @@ export async function nextStep(project: Project): Promise<{ step: AutoStep; arti
 
   // 4. Today's article.
   const postDue = !project.auto_next_post_at || Date.parse(project.auto_next_post_at) <= Date.now();
-  const opportunity = postDue ? await bestOpportunity(project.id) : null;
+  const opportunity = postDue ? await bestOpportunity(project) : null;
   // Two steps so each fits in one run: research + brief first, then the article from the saved brief.
   if (opportunity) return { step: opportunity.brief_json && opportunity.research_json ? "write" : "brief", opportunity };
 
@@ -146,14 +146,16 @@ const SAME_TOPIC = 0.6;
  * article this project wrote (any status), or by a page found in the site crawl. Covered topics are
  * dismissed so they aren't considered again.
  */
-async function bestOpportunity(projectId: string): Promise<ContentOpportunity | null> {
+async function bestOpportunity(project: Project): Promise<ContentOpportunity | null> {
+  const projectId = project.id;
   const candidates = (await listOpportunities(projectId)).filter((o) => o.status === "new" && BLOG_TYPES.has(o.content_type));
   if (!candidates.length) return null;
 
   const db = supabaseAdmin();
   const [{ data: articles, error }, pages] = await Promise.all([
     db.from("articles").select("title,primary_keyword").eq("project_id", projectId),
-    loadCrawledPages(projectId),
+    // Crawled pages plus the live sitemap, so posts added to the site since the last crawl are known too.
+    loadSitePages(projectId, project.url),
   ]);
   if (error) throw new Error(`Failed to load articles: ${error.message}`);
   const written = (articles ?? []).map((a) => ({ title: a.title as string, keyword: tokenSet(a.primary_keyword), heading: tokenSet(a.title) }));

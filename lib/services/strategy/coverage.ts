@@ -68,6 +68,7 @@ export async function loadSitePages(projectId: string, siteUrl: string): Promise
  * partially covering page — one matching secondary keyword doesn't mean the topic has a page.
  */
 export function topicCoverage(keywords: string[], pages: SitePage[]): CoverageResult {
+  const thinSite = isThinSite(pages);
   let best: CoverageResult = { level: "none", pageUrl: null };
   let bestScore = 0;
 
@@ -82,7 +83,10 @@ export function topicCoverage(keywords: string[], pages: SitePage[]): CoverageRe
       const narrower = [...p.slugTokens].some((t) => !GENERIC_SLUG.has(t) && !/^\d+$/.test(t) && !kw.has(t));
       if (narrower) continue;
       bestScore = score;
-      const strong = p.wordCount == null || p.wordCount >= MIN_STRONG_WORDS;
+      // On a client-rendered site the crawl reads almost no text from any page, so word counts say nothing
+      // about a page's strength: an existing blog post with a matching title or URL then covers the topic.
+      // (Product and landing pages still don't: a blog post on their subject is a different page.)
+      const strong = p.wordCount == null || p.wordCount >= MIN_STRONG_WORDS || (thinSite && ARTICLE_URL.test(p.url));
       best = {
         level: index === 0 && score >= COVERED && strong && !narrower ? "covered" : "partial",
         pageUrl: p.url,
@@ -90,6 +94,21 @@ export function topicCoverage(keywords: string[], pages: SitePage[]): CoverageRe
     }
   }
   return best;
+}
+
+/** URLs of posts and articles, as opposed to product or landing pages. */
+const ARTICLE_URL = /\/(blog|news|posts?|articles?|insights|resources|guides?)\/[^/]+/i;
+
+const thinSiteCache = new WeakMap<SitePage[], boolean>();
+
+/** True when most crawled pages came back nearly empty (the site renders in the browser). */
+function isThinSite(pages: SitePage[]): boolean {
+  const cached = thinSiteCache.get(pages);
+  if (cached !== undefined) return cached;
+  const counts = pages.map((p) => p.wordCount).filter((n): n is number => n != null);
+  const thin = counts.length >= 3 && counts.filter((n) => n < MIN_STRONG_WORDS).length / counts.length > 0.7;
+  thinSiteCache.set(pages, thin);
+  return thin;
 }
 
 function slugTokens(url: string): Set<string> {
