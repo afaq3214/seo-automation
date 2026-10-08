@@ -53,7 +53,7 @@ export async function optimizeArticle(projectId: string, articleId: string, emit
   if (before.edits.length) {
     emit({ type: "step", step: "revising", message: `Revising ${before.edits.length} weak parts` });
     const { facts, links } = await siteContext(project, brief);
-    const revisions = await revise(original, brief, before.edits, facts, [...links.map((l) => l.url), ...sourceUrlsOf(article)]);
+    const revisions = await revise(original, brief, before.edits, facts, links.map((l) => l.url));
     const limited = enforceWordLimit(original, before.edits, revisions, wordLimits().max, wordLimits().min);
     optimized = limited.content;
     applied = limited.applied;
@@ -222,9 +222,10 @@ const REVISE_SYSTEM = [
   "",
   "Hard rules: only state facts about the business that are in the provided business facts; no specific prices;",
   "no claims about named competitors; no invented statistics, studies or quotes. Keep every statistic that is",
-  "already in the part you revise exactly as written, together with its source link. Keep the internal links of",
+  "already in the part you revise exactly as written, with its source named in words. Keep the internal links of",
   "the part you revise (rewording the anchor is fine). Inline formatting: **bold** and [anchor](url) links only to",
-  "the allowed URLs. No HTML. Never write that the article is optimized for AI answers.",
+  "the allowed URLs, which are all pages of the site itself: never link to another website. No HTML. Never write",
+  "that the article is optimized for AI answers.",
   "",
   HUMAN_VOICE,
 ].join("\n");

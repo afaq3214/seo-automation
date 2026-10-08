@@ -73,8 +73,8 @@ const MAX_FACTS_PER_SOURCE = 6;
 
 /**
  * Real-world data for the article: Google "<keyword> statistics" results, then sentences containing numbers
- * from those pages (plus the result snippets). The writer may only use numbers from this list, each cited
- * with a link to its source. 1 Serper credit unless cached; failures just mean no data.
+ * from those pages (plus the result snippets). The writer may only use numbers from this list, naming the
+ * source in words (articles never link to other websites). 1 Serper credit unless cached; failures just mean no data.
  */
 export async function fetchDataSources(project: Project, keyword: string): Promise<DataSource[]> {
   const own = rootDomain(project.domain);

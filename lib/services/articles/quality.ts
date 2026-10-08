@@ -425,7 +425,7 @@ export async function runQualityLoop(projectId: string, articleId: string, emit:
     const edits = await planEdits(content, ctx, fixable, current.measures);
     if (!edits.length) break;
     const { facts, links } = await siteContext(project, article.brief);
-    const revisions = await revise(content, article.brief, edits, facts, [...links.map((l) => l.url), ...sourceUrlsOf(article)]);
+    const revisions = await revise(content, article.brief, edits, facts, links.map((l) => l.url));
     const limited = enforceWordLimit(content, edits, revisions, e.ARTICLE_MAX_WORDS, wordLimits().min);
     if (limited.applied === 0) break;
 

@@ -101,7 +101,7 @@ export async function writePreparedArticle(
     emit({ type: "step", step: "writing", message: `Expanding the draft to at least ${minWords} words (${written} so far)` });
     const edits = expansionEdits(content, minWords - written);
     if (edits.length) {
-      const revisions = await revise(content, brief, edits, facts, [...links.map((l) => l.url), ...dataSources.map((s) => s.url)]);
+      const revisions = await revise(content, brief, edits, facts, links.map((l) => l.url));
       content = enforceWordLimit(content, edits, revisions, maxWords).content;
     }
     logger.info("article expanded", { before: written, after: countWords(content), minWords });

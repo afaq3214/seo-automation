@@ -12,7 +12,8 @@ export function sourceUrlsOf(article: ArticleRow): string[] {
   return (article.serp_research?.dataSources ?? []).map((s) => s.url);
 }
 
-const MAX_EXTERNAL_LINKS = 3;
+/** Articles link only to the site itself: any link to another website is turned into plain text. */
+const MAX_EXTERNAL_LINKS = 0;
 
 /** The article's featured image, if one is ready. */
 export function featuredImageOf(article: ArticleRow): FeaturedImage | null {
@@ -89,7 +90,7 @@ export async function refreshArticleOutputs(projectId: string, articleId: string
   const image = featuredImageOf(article);
   const sources = sourceUrlsOf(article);
   const inline = inlineImageOf(article);
-  // House rule: at most MAX_EXTERNAL_LINKS links to other websites per article.
+  // House rule: no links to other websites (MAX_EXTERNAL_LINKS).
   const contentJson = limitExternalLinks(article.content_json, host, MAX_EXTERNAL_LINKS);
   const optimizedJson = article.optimized_json ? limitExternalLinks(article.optimized_json, host, MAX_EXTERNAL_LINKS) : null;
   const finalContent = optimizedJson ?? contentJson;
