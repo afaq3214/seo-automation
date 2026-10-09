@@ -63,6 +63,8 @@ const SYSTEM = [
   "Internal links: include 10 internal links (at least 8) to DIFFERENT pages from the site pages list, spread",
   "through the intro, sections and FAQ. Each anchor is a natural, descriptive phrase that tells the reader what",
   "the linked page is about (never 'click here' or 'learn more'), and each URL is linked only once.",
+  "When you name a trade or industry that has its own page in the list, link that word to it the first time,",
+  "local slang included (e.g. 'sparkies' links to the electrician page, 'tradies' to the tradies page).",
   "",
   "Formatting inside text: **bold** for emphasis, and [anchor text](url) links ONLY to URLs from the site pages",
   "list. Never link to any other website. No other markup, no HTML, no headings in text.",

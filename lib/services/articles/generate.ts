@@ -4,6 +4,7 @@ import { siteBase } from "@/lib/url";
 import type { ArticleContent, ArticleEdit, ArticleEvent, ArticleRow, ContentBrief, ContentOpportunity, Project, SerpResearch } from "@/lib/types";
 import { coverage, tokenSet } from "../keywords/text";
 import { getProject } from "../projects";
+import { autoLinkIndustries, industryLinkTargets } from "./autolink";
 import { createBrief } from "./brief";
 import { countWords, renderArticleHtml, slugify, wordLimits } from "./html";
 import { enforceWordLimit, revise } from "./optimize";
@@ -106,6 +107,11 @@ export async function writePreparedArticle(
     }
     logger.info("article expanded", { before: written, after: countWords(content), minWords });
   }
+
+  // Trade and industry words (slang included) link to the site's industry pages.
+  const autoLinked = autoLinkIndustries(content, await industryLinkTargets(projectId, project.url));
+  content = autoLinked.content;
+  if (autoLinked.added) logger.info("industry links added", { added: autoLinked.added });
 
   emit({ type: "step", step: "saving", message: "Saving draft" });
   const siteHost = new URL(project.url).hostname;
